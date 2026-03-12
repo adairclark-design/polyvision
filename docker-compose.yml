@@ -1,0 +1,110 @@
+# ── PolyVision — Docker Compose Production Stack ─────────────────────────────
+# Two-container microservices + managed data layer:
+#   The Ear   → Node.js WebSocket listener (stays connected to Polymarket RTDS)
+#   The Brain → Python FastAPI (AI logic, DB writes, notifications)
+#   Redis     → Fast layer (last 100 whale trades, dedup, rate-limit counters)
+#   Postgres  → History layer (whale profiles, trade ledger)
+
+services:
+
+  # ── The Ear ──────────────────────────────────────────────────────────────────
+  # A dedicated Node.js service that maintains a persistent WebSocket connection
+  # to Polymarket's Real-Time Data Socket. It republishes filtered trade events
+  # to The Brain via HTTP POST. If The Brain crashes, The Ear stays connected
+  # and buffers events in Redis to prevent data loss.
+  ear:
+    build:
+      context: ./ear
+      dockerfile: Dockerfile
+    container_name: polyvision-ear
+    restart: always
+    env_file: .env
+    environment:
+      - BRAIN_URL=http://brain:8000
+      - REDIS_URL=redis://redis:6379/0
+      - ALERT_THRESHOLD_STANDARD=${ALERT_THRESHOLD_STANDARD:-10000}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [ polyvision ]
+    healthcheck:
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:3001/health', r => r.statusCode === 200 ? process.exit(0) : process.exit(1))" ]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  # ── The Brain ─────────────────────────────────────────────────────────────────
+  # Python FastAPI service. Receives events from The Ear, runs the signal engine,
+  # updates whale profiles in Postgres, calls GPT-4o for AI summaries, and
+  # pushes finalized alerts to Discord/Telegram/OneSignal.
+  brain:
+    build:
+      context: ./brain
+      dockerfile: Dockerfile
+    container_name: polyvision-brain
+    restart: always
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql://polyvision:${POSTGRES_PASSWORD:-secret}@postgres:5432/polyvision
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TAVILY_API_KEY=${TAVILY_API_KEY}
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY}
+      - BRIEFING_EMAIL_FROM=${BRIEFING_EMAIL_FROM}
+      - BRIEFING_EMAIL_TO=${BRIEFING_EMAIL_TO}
+      - BRIEFING_HOUR_EST=${BRIEFING_HOUR_EST:-8}
+    ports:
+      - "8000:8000" # FastAPI internal; expose to dashboard for WebSocket feed
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks: [ polyvision ]
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: polyvision-redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks: [ polyvision ]
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── PostgreSQL ────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: polyvision-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: polyvision
+      POSTGRES_USER: polyvision
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [ polyvision ]
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U polyvision" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis_data:
+  postgres_data:
+
+
+networks:
+  polyvision:
+    driver: bridge

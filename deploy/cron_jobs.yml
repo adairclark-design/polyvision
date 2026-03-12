@@ -1,0 +1,76 @@
+# ── GitHub Actions: PolyVision Cron Jobs ─────────────────────────────────────
+# Triggers:
+#   1. 03:00 UTC daily  → recalculate whale win-rates + ROI
+#   2. Every 5 minutes  → Dead Man's Switch health check
+#
+# Requires GitHub repository secret: POLYVISION_BRAIN_URL
+# Example value: https://polyvision-brain.railway.app
+
+name: PolyVision Scheduled Tasks
+
+on:
+  schedule:
+    # Daily at 03:00 UTC — recalculate all whale profiles
+    - cron: '0 3 * * *'
+    # Every 5 minutes — Dead Man's Switch health ping
+    - cron: '*/5 * * * *'
+  workflow_dispatch:  # also allow manual trigger
+
+jobs:
+  # ── Job 1: Whale Profile Recalculation (03:00 UTC daily) ──────────────────
+  recalculate-profiles:
+    name: Recalculate Whale Win-Rates
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 3 * * *' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Trigger profile recalculation
+        run: |
+          RESPONSE=$(curl -s -o response.json -w "%{http_code}" \
+            -X POST "${{ secrets.POLYVISION_BRAIN_URL }}/cron/recalculate-profiles" \
+            -H "Content-Type: application/json")
+          echo "HTTP $RESPONSE"
+          cat response.json
+          if [ "$RESPONSE" != "200" ]; then
+            echo "❌ Recalculation failed!"
+            exit 1
+          fi
+          echo "✅ Profile recalculation complete."
+        env:
+          BRAIN_URL: ${{ secrets.POLYVISION_BRAIN_URL }}
+
+  # ── Job 2: Dead Man's Switch (every 5 min) ─────────────────────────────────
+  health-check:
+    name: Dead Man's Switch
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '*/5 * * * *' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Ping The Brain health endpoint
+        run: |
+          RESPONSE=$(curl -s -o health.json -w "%{http_code}" \
+            "${{ secrets.POLYVISION_BRAIN_URL }}/health")
+          echo "=== Brain Health ===" && cat health.json
+          RESPONSE_EAR=$(curl -s -o ear.json -w "%{http_code}" \
+            "${{ secrets.POLYVISION_EAR_URL }}/health")
+          echo "=== Ear Health ===" && cat ear.json
+
+          if [ "$RESPONSE" != "200" ]; then
+            echo "🚨 Brain is DOWN (HTTP $RESPONSE). Immediate attention required."
+            exit 1
+          fi
+          if [ "$RESPONSE_EAR" != "200" ]; then
+            echo "🚨 Ear is DOWN (HTTP $RESPONSE_EAR). WebSocket listener offline!"
+            exit 1
+          fi
+          echo "✅ All systems operational."
+
+  # ── Job 3: API Schema Version Check (daily at 03:01 UTC) ──────────────────
+  api-version-check:
+    name: Polymarket API Schema Check
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 3 * * *' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Verify API response schema matches gemini.md spec
+        run: |
+          RESULT=$(curl -s "https://clob.polymarket.com/markets?limit=1&next_cursor=MA==")
+          echo "API sample response:"
+          echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); fields=list(d['data'][0].keys()) if d.get('data') else []; print('Fields:', fields); missing=[f for f in ['condition_id','question','active','minimum_tick_size'] if f not in fields]; print('Missing:', missing or 'None')"

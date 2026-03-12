@@ -1,0 +1,19 @@
+{
+    "name": "polyvision-ear",
+    "version": "1.0.0",
+    "description": "PolyVision – The Ear: Polymarket RTDS WebSocket listener",
+    "main": "index.js",
+    "scripts": {
+        "start": "node index.js",
+        "dev": "node --watch index.js"
+    },
+    "dependencies": {
+        "axios": "^1.6.0",
+        "dotenv": "^16.3.1",
+        "ioredis": "^5.3.2",
+        "ws": "^8.16.0"
+    },
+    "engines": {
+        "node": ">=20"
+    }
+}

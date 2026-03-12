@@ -1,0 +1,22 @@
+# PolyVision — Python Dependencies
+# Install: pip install -r requirements.txt
+
+# ── Data & APIs ───────────────────────────────────────────────────────────────
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# ── Polymarket SDK ────────────────────────────────────────────────────────────
+py-clob-client>=0.16.0
+
+# ── AI ─────────────────────────────────────────────────────────────────────────
+openai>=1.30.0
+
+# ── Databases ─────────────────────────────────────────────────────────────────
+psycopg2-binary>=2.9.9
+redis>=5.0.0
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+# OneSignal, Discord, and Telegram use plain HTTP via requests (no extra lib needed)
+
+# ── Reporting (Phase 4 — Alpha PDF) ──────────────────────────────────────────
+reportlab>=4.2.0
