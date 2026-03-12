@@ -2139,3 +2139,131 @@ button {
     color: var(--text-muted);
     font-size: 13px;
 }
+
+/* ── MOBILE RESPONSIVE ADAPTATIONS ─────────────────────────────────────────── */
+@media (max-width: 900px) {
+    /* Main Layout */
+    .layout {
+        display: flex;
+        flex-direction: column;
+        height: auto;
+        min-height: calc(100vh - var(--topbar-h) - var(--hud-h));
+        overflow-y: visible;
+        padding-bottom: calc(var(--hud-h) + 20px);
+    }
+
+    body {
+        overflow-y: auto;
+    }
+
+    /* Topbar Compression */
+    .topbar {
+        padding: 0 12px;
+        gap: 8px;
+    }
+    .topbar-left {
+        flex: unset;
+    }
+    .logo-text {
+        font-size: 16px;
+    }
+    .logo-tagline, .topbar-center, .market-stat {
+        display: none; /* Hide desktop-only fluff */
+    }
+    .topbar-right {
+        flex: 1;
+        justify-content: flex-end;
+    }
+
+    /* Sidebar to Horizontal Tab Strip */
+    .sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        flex-direction: row;
+        padding: 12px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        gap: 12px;
+        align-items: center;
+    }
+    .nav-section {
+        flex-direction: row;
+        align-items: center;
+        gap: 6px;
+    }
+    .nav-label, .disclaimer-text {
+        display: none;
+    }
+    .nav-item {
+        white-space: nowrap;
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+    .filter-group {
+        flex-direction: row;
+        align-items: center;
+        margin-left: 8px;
+    }
+    .sidebar-footer {
+        display: none;
+    }
+
+    /* Columns Expansion */
+    .pulse-col, .leaderboard-col {
+        border-left: none;
+        overflow: visible;
+        flex: none; /* remove grid/flex constraints */
+    }
+    .pulse-feed, .whale-cards {
+        overflow-y: visible;
+    }
+
+    /* Leaderboard Stacking */
+    .leaderboard-col {
+        border-top: 1px solid var(--border);
+        margin-top: 20px;
+        padding-bottom: 20px;
+    }
+
+    /* HUD Compression */
+    .hud {
+        padding: 0 16px;
+        gap: 16px;
+        justify-content: space-between;
+    }
+    .hud-center {
+        display: none;
+    }
+    .btn-hud-upgrade {
+        padding: 8px 12px;
+        font-size: 11px;
+    }
+
+    /* Modals Compression */
+    .modal {
+        padding: 20px;
+        width: 92vw;
+    }
+    .modal-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .modal-whale-top {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    
+    .portfolio-panel, .briefing-panel {
+        width: 100vw;
+    }
+    .pf-stats-bar {
+        flex-wrap: wrap;
+    }
+    .pf-stat {
+        flex: 1 1 40%;
+        border-bottom: 1px solid var(--border);
+    }
+    .pf-table-wrap {
+        overflow-x: auto;
+    }
+}
