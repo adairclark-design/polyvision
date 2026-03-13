@@ -939,13 +939,109 @@ $('sortSize').onclick = () => {
   renderFeed();
 };
 
-// ── Nav Items ──────────────────────────────────────────────────────────────────
+// ── View Router ─────────────────────────────────────────────────────────────
+const VIEWS = {
+  'nav-pulse':    { col: 'pulseCol',   lb: true  },
+  'nav-whales':   { col: 'whalesCol',  lb: false },
+  'nav-markets':  { col: 'marketsCol', lb: false },
+  'nav-mock':     { col: null,         lb: true,  action: () => openPortfolio() },
+  'nav-briefing': { col: null,         lb: true,  action: () => openBriefing()  },
+};
+
+function switchView(navId) {
+  const view = VIEWS[navId];
+  if (!view) return;
+
+  // If it has a special action (modal/panel), run that and bail
+  if (view.action) { view.action(); return; }
+
+  // Toggle nav active state
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const navEl = document.getElementById(navId);
+  if (navEl) navEl.classList.add('active');
+
+  // Toggle columns
+  const cols = ['pulseCol', 'whalesCol', 'marketsCol'];
+  cols.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = (view.col === id) ? '' : 'none';
+  });
+
+  // Show/hide the right-side leaderboard col
+  const lb = document.getElementById('leaderboardCol');
+  if (lb) lb.style.display = view.lb ? '' : 'none';
+
+  // Trigger data loads
+  if (navId === 'nav-whales') loadWhaleProfiles();
+}
+
 document.querySelectorAll('.nav-item:not(.locked)').forEach(item => {
-  item.onclick = () => {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    item.classList.add('active');
+  item.onclick = (e) => {
+    e.preventDefault();
+    switchView(item.id);
   };
 });
+
+// ── Whale Profiles Loader ───────────────────────────────────────────────────
+let whaleProfilesLoaded = false;
+
+async function loadWhaleProfiles() {
+  if (whaleProfilesLoaded) return;   // only fetch once per session
+  const grid = document.getElementById('whaleProfilesGrid');
+  const loading = document.getElementById('whaleProfilesLoading');
+
+  try {
+    const resp = await fetch(
+      'https://data-api.polymarket.com/v1/leaderboard?category=OVERALL&timePeriod=ALL&orderBy=PNL&limit=50'
+    );
+    const data = await resp.json();
+    const rows = Array.isArray(data) ? data : (data.data || []);
+
+    if (!rows.length) {
+      grid.innerHTML = '<div class="lb-loading">No data available.</div>';
+      return;
+    }
+
+    loading && loading.remove();
+    grid.innerHTML = rows.map((t, i) => {
+      const rank = i + 1;
+      const isTop3 = rank <= 3;
+      const pnl = parseFloat(t.pnl || 0);
+      const vol = parseFloat(t.vol || 0);
+      const pnlStr = (pnl >= 0 ? '+$' : '-$') + Math.abs(pnl).toLocaleString('en-US', { maximumFractionDigits: 0 });
+      const volStr = '$' + vol.toLocaleString('en-US', { maximumFractionDigits: 0 });
+      const handle = t.userName || t.name || `Trader 0x…${(t.proxyWallet || '').slice(-6).toUpperCase()}`;
+      const shortWallet = t.proxyWallet ? `${t.proxyWallet.slice(0, 6)}…${t.proxyWallet.slice(-4)}` : '';
+
+      return `
+      <div class="whale-profile-card" onclick="openWhaleModal(${JSON.stringify({ 
+        wallet: t.proxyWallet || '', handle, winRate: 0, roi30d: 0 
+      }).replace(/"/g, '&quot;')})">
+        <div class="wpc-rank ${isTop3 ? 'top3' : ''}">${isTop3 ? ['🥇','🥈','🥉'][rank-1] : '#' + rank}</div>
+        <div class="wpc-info">
+          <div class="wpc-handle">${handle}</div>
+          <div class="wpc-wallet">${shortWallet}</div>
+        </div>
+        <div class="wpc-stats">
+          <div class="wpc-stat">
+            <span class="wpc-label">ALL-TIME P&L</span>
+            <span class="wpc-value ${pnl >= 0 ? 'positive' : 'negative'}">${pnlStr}</span>
+          </div>
+          <div class="wpc-stat">
+            <span class="wpc-label">VOLUME</span>
+            <span class="wpc-value">${volStr}</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    whaleProfilesLoaded = true;
+  } catch (err) {
+    grid.innerHTML = `<div class="lb-loading">⚠️ Failed to load leaderboard: ${err.message}</div>`;
+  }
+}
+
+
 
 // ── Startup (Clerk Auth Wrapper) ─────────────────────────────────────────────
 async function initAuth() {

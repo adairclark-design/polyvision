@@ -2267,3 +2267,109 @@ button {
         overflow-x: auto;
     }
 }
+
+/* ── WHALE PROFILES GRID ─────────────────────────────────────────────────────── */
+.whale-profiles-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.whale-profile-card {
+    display: grid;
+    grid-template-columns: 52px 1fr auto;
+    align-items: center;
+    gap: 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.whale-profile-card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--mint);
+    transform: translateX(3px);
+    box-shadow: var(--mint-glow);
+}
+
+.wpc-rank {
+    font-size: 22px;
+    font-weight: 900;
+    font-family: var(--text-mono);
+    color: var(--text-muted);
+    text-align: center;
+    line-height: 1;
+}
+
+.wpc-rank.top3 {
+    font-size: 26px;
+}
+
+.wpc-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.wpc-handle {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wpc-wallet {
+    font-size: 10px;
+    font-family: var(--text-mono);
+    color: var(--text-muted);
+}
+
+.wpc-stats {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.wpc-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    text-align: right;
+}
+
+.wpc-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+}
+
+.wpc-value {
+    font-size: 13px;
+    font-weight: 800;
+    font-family: var(--text-mono);
+    color: var(--text-primary);
+}
+
+.wpc-value.positive { color: var(--mint); }
+.wpc-value.negative { color: var(--rose); }
+
+@media (max-width: 900px) {
+    .whale-profile-card {
+        grid-template-columns: 40px 1fr;
+        grid-template-rows: auto auto;
+    }
+    .wpc-stats {
+        grid-column: 1 / -1;
+        justify-content: space-between;
+    }
+}
