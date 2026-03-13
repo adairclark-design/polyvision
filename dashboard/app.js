@@ -151,9 +151,16 @@ if (btnHudUpgrade) {
   btnHudUpgrade.onclick = window.checkoutPro;
 }
 
-// ── Utilities ─────────────────────────────────────────────────────────────────
+// Formatting helpers
 function fmt(n) { return '$' + n.toLocaleString('en-US', { maximumFractionDigits: 0 }); }
 function fmtPct(n) { return (n >= 0 ? '+' : '') + (n * 100).toFixed(1) + '%'; }
+function fmtPrice(p) {
+  // p is a decimal 0.0–1.0; display as cents with edge-case labels
+  const cents = Math.round(p * 100);
+  if (cents <= 0) return '<1¢';
+  if (cents >= 100) return '>99¢';
+  return `${cents}¢`;
+}
 function timeAgo(ms) {
   const s = Math.floor((Date.now() - ms) / 1000);
   if (s < 60) return `${s}s ago`;
@@ -320,7 +327,7 @@ function buildEventCard(ev) {
       </div>
       <div class="stat">
         <span class="label">PRICE</span>
-        <span class="value neutral">${(ev.price * 100).toFixed(0)}¢</span>
+        <span class="value neutral">${fmtPrice(ev.price)}</span>
       </div>
       <div class="stat">
         <span class="label">WIN RATE</span>
@@ -894,7 +901,7 @@ window.openTradeModal = function (eventId) {
           </div>
           <div class="modal-stat">
             <div class="modal-stat-label">ENTRY PRICE</div>
-            <div class="modal-stat-value">${(ev.price * 100).toFixed(0)}¢</div>
+            <div class="modal-stat-value">${fmtPrice(ev.price)}</div>
           </div>
           <div class="modal-stat">
             <div class="modal-stat-label">MAX PAYOUT</div>
