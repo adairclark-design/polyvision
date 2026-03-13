@@ -196,11 +196,61 @@ function calcConviction(whale, usdValue, totalTrades, totalVolumeUsd) {
   const raw = (sizeScore * 0.6 + baseWr * 0.4) * 10;
   return Math.round(Math.min(Math.max(raw, 1), 10));
 }
-function pickReasoningChips() {
-  const chips = Object.values(REASONING_CHIPS);
-  const count = Math.floor(Math.random() * 2) + 1;
-  const shuffled = chips.sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count);
+/** Returns data-driven reasoning chips based on actual event properties */
+function generateChips(ev) {
+  const chips = [];
+
+  // 1. TRADE FREQUENCY — how many trades has this wallet had in the last 4 hours?
+  const fourHoursAgo = Date.now() - 4 * 60 * 60 * 1000;
+  const recentTrades = state.events.filter(
+    e => e.whale?.wallet === ev.whale?.wallet && e.timestamp >= fourHoursAgo
+  );
+  if (recentTrades.length >= 3) {
+    chips.push(`⚡ ${recentTrades.length} positions in 4 hours`);
+  }
+
+  // 2. INACTIVITY — has this wallet not appeared in the previous events (before now)?
+  const priorTrades = state.events.filter(
+    e => e.whale?.wallet === ev.whale?.wallet && e.id !== ev.id
+  );
+  if (priorTrades.length === 0 && ev.wallet_total_trades && ev.wallet_total_trades > 1) {
+    // wallet has history but hasn't appeared in this session
+    chips.push('🕒 Returning after inactivity');
+  }
+
+  // 3. MAX POSITION SIZE — is this one of the largest trades we've seen?
+  const allSizes = state.events.map(e => e.usdValue).filter(Boolean);
+  const p90 = allSizes.length >= 5
+    ? allSizes.sort((a, b) => a - b)[Math.floor(allSizes.length * 0.9)]
+    : 50000;
+  if (ev.usdValue >= p90 && ev.usdValue >= 25000) {
+    chips.push('📎 Max position size');
+  }
+
+  // 4. HIGH CONVICTION PRICE — betting near certainty (price < 10¢ or > 90¢)
+  const priceCents = Math.round((ev.price || 0.5) * 100);
+  if (priceCents <= 10) {
+    chips.push('🎯 Long-shot contrarian bet');
+  } else if (priceCents >= 90) {
+    chips.push('🛡 High-conviction near-certainty');
+  }
+
+  // 5. HEDGE SIGNAL — betting NO when most recent same-market trades are YES
+  const sameMarketEvents = state.events.filter(e => e.market === ev.market && e.id !== ev.id);
+  const dominantOutcome = sameMarketEvents.length > 0
+    ? (sameMarketEvents.filter(e => e.outcome === 'YES').length > sameMarketEvents.length / 2 ? 'YES' : 'NO')
+    : null;
+  if (dominantOutcome && ev.outcome !== dominantOutcome && sameMarketEvents.length >= 2) {
+    chips.push('🛡 Possible hedge play');
+  }
+
+  // 6. LARGE ABSOLUTE POSITION — any trade > $50K is noteworthy
+  if (ev.usdValue >= 50000 && !chips.includes('📎 Max position size')) {
+    chips.push('🧱 Large order wall placed');
+  }
+
+  // Return up to 2 chips (prioritise the most interesting ones)
+  return chips.slice(0, 2);
 }
 
 // ── Sparkline Chart (Chart.js) ────────────────────────────────────────────────
@@ -518,12 +568,15 @@ function connectLiveFeed() {
             roi30d: parseFloat(payload.wallet_roi_30d || 0),
             sparkData: Array.from({ length: 12 }, () => Math.random() * 100),
           },
-          reasoningChips: pickReasoningChips(),
+          reasoningChips: [],  // computed after push, below
         };
 
         state.events.unshift(ev);
         const maxEvents = window.isPro() ? 50 : 10;
         if (state.events.length > maxEvents) state.events.pop();
+
+        // Generate chips NOW — after ev is in state.events so frequency counts work
+        ev.reasoningChips = generateChips(ev);
 
         state.todayCount++;
         state.todayVolume += ev.usdValue;
