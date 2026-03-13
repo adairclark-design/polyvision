@@ -508,6 +508,7 @@ function connectLiveFeed() {
         // Debounce render slightly so the initial 20-burst from cache doesn't lock the UI
         renderFeed();
         updateStats();
+        checkEventAgainstRules(ev);
 
         // Animate the new card only if it's new (not a burst payload)
         // A simple heuristic: if it arrived in the last 10 seconds, it's live
@@ -1012,6 +1013,7 @@ const VIEWS = {
   'nav-markets':  { col: 'marketsCol', lb: false },
   'nav-mock':     { col: null,         lb: true,  action: () => openPortfolio() },
   'nav-briefing': { col: null,         lb: true,  action: () => openBriefing()  },
+  'nav-alerts':   { col: null,         lb: true,  action: () => openAlerts()   },
 };
 
 function switchView(navId) {
@@ -1885,7 +1887,138 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// ── Custom Alerts System ──────────────────────────────────────────────────────
+const ALERTS_KEY = 'pv_alert_rules';
+
+function loadAlertRules() {
+  try { return JSON.parse(localStorage.getItem(ALERTS_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveAlertRules(rules) {
+  localStorage.setItem(ALERTS_KEY, JSON.stringify(rules));
+}
+
+window.openAlerts = function () {
+  $('alertsOverlay').classList.add('active');
+  renderAlertRules();
+  // Show browser permission prompt if not yet granted
+  if (Notification.permission === 'default') {
+    $('alertsPermission').style.display = 'flex';
+  } else {
+    $('alertsPermission').style.display = 'none';
+  }
+};
+
+window.closeAlerts = function () {
+  $('alertsOverlay').classList.remove('active');
+};
+
+window.requestAlertPermission = async function () {
+  const perm = await Notification.requestPermission();
+  if (perm === 'granted') {
+    $('alertsPermission').style.display = 'none';
+    showToast({ tier: 'INFO', whale: { handle: '🔔 Notifications enabled' }, market: 'You\'ll receive alerts for your custom rules.', outcome: 'OK', usdValue: 0, timestamp: Date.now() });
+  }
+};
+
+window.saveAlertRule = function () {
+  const minSize = parseInt($('alertMinSize').value || 10000);
+  const side    = $('alertSide').value || 'both';
+  const keyword = ($('alertKeyword').value || '').trim().toLowerCase();
+  const wallet  = ($('alertWallet').value || '').trim().toLowerCase();
+
+  const rule = {
+    id:      Date.now().toString(),
+    minSize,
+    side,
+    keyword,
+    wallet,
+    created: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+  };
+
+  const rules = loadAlertRules();
+  rules.push(rule);
+  saveAlertRules(rules);
+
+  // Reset inputs
+  $('alertKeyword').value = '';
+  $('alertWallet').value  = '';
+
+  renderAlertRules();
+  showToast({ tier: 'INFO', whale: { handle: '✅ Rule saved' }, market: `Min $${minSize.toLocaleString()} · ${side} · ${keyword || 'Any market'}`, outcome: 'OK', usdValue: 0, timestamp: Date.now() });
+};
+
+window.deleteAlertRule = function (id) {
+  const rules = loadAlertRules().filter(r => r.id !== id);
+  saveAlertRules(rules);
+  renderAlertRules();
+};
+
+function renderAlertRules() {
+  const rules = loadAlertRules();
+  const list  = $('alertsRulesList');
+
+  if (!rules.length) {
+    list.innerHTML = `<div class="briefing-empty" id="alertsEmpty">
+      <span style="font-size:32px">🔕</span>
+      <div style="margin-top:8px;font-weight:700;color:var(--text-primary)">No rules saved yet</div>
+      <div style="margin-top:4px;color:var(--text-muted);font-size:12px">Create a rule above to get notified when whales match your criteria.</div>
+    </div>`;
+    return;
+  }
+
+  list.innerHTML = rules.map(r => {
+    const parts = [
+      `Min $${r.minSize.toLocaleString()}`,
+      r.side !== 'both' ? r.side + ' only' : 'YES & NO',
+      r.keyword ? `"${r.keyword}"` : '',
+      r.wallet  ? `wallet: ${r.wallet.slice(0, 8)}…` : '',
+    ].filter(Boolean).join(' · ');
+
+    return `<div class="alert-rule-row">
+      <div class="alert-rule-info">
+        <span class="alert-rule-label">${parts}</span>
+        <span class="alert-rule-date">Added ${r.created}</span>
+      </div>
+      <button class="alert-rule-delete" onclick="deleteAlertRule('${r.id}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+/** Called from the WebSocket onmessage handler for every incoming trade event */
+function checkEventAgainstRules(ev) {
+  const rules = loadAlertRules();
+  if (!rules.length) return;
+
+  for (const rule of rules) {
+    const sizeOk    = ev.usdValue >= rule.minSize;
+    const sideOk    = rule.side === 'both' || ev.outcome === rule.side;
+    const keywordOk = !rule.keyword || (ev.market || '').toLowerCase().includes(rule.keyword);
+    const walletOk  = !rule.wallet || (ev.whale?.wallet || '').toLowerCase().includes(rule.wallet);
+
+    if (sizeOk && sideOk && keywordOk && walletOk) {
+      // In-app alert toast (always fires)
+      showToast({
+        ...ev,
+        tier: 'WHALE',
+        market: `🔔 Alert: ${ev.market}`,
+      });
+
+      // Browser push notification (fires if permission granted)
+      if (Notification.permission === 'granted') {
+        new Notification(`🐋 PolyVision Alert`, {
+          body: `${ev.whale?.handle || 'Whale'} — $${Math.round(ev.usdValue).toLocaleString()} ${ev.outcome} on "${ev.market}"`,
+          icon: '/favicon.ico',
+        });
+      }
+      break; // only fire one alert per trade even if multiple rules match
+    }
+  }
+}
+
 // ── OneSignal Push Notification Integration ────────────────────────────────────
+
 // Replace 'YOUR_ONESIGNAL_APP_ID' below with your real App ID from onesignal.com
 const ONESIGNAL_APP_ID = '94643e9f-b6f2-4682-91f3-7484780f933e';
 

@@ -96,7 +96,7 @@
                 <a href="#" class="nav-item" id="nav-briefing">
                     <span class="nav-icon">📰</span> Morning Briefing
                 </a>
-                <a href="#" class="nav-item locked" id="nav-alerts">
+                <a href="#" class="nav-item" id="nav-alerts">
                     <span class="nav-icon">🔔</span> Alerts
                     <span class="lock-badge">PRO</span>
                 </a>
@@ -352,8 +352,79 @@
         </div>
     </div>
 
+    <!-- ── ALERTS RULES PANEL ─────────────────────────────────────────────────── -->
+    <div class="briefing-overlay" id="alertsOverlay" onclick="if(event.target===this)closeAlerts()">
+        <div class="briefing-panel" id="alertsPanel">
+            <div class="pf-header">
+                <div class="pf-title-block">
+                    <span class="pf-icon">🔔</span>
+                    <div>
+                        <h2 class="pf-title">Custom Alerts</h2>
+                        <p class="pf-subtitle">Get notified when whales match your rules — even when away from the feed</p>
+                    </div>
+                </div>
+                <button class="pf-close" onclick="closeAlerts()">✕</button>
+            </div>
+
+            <!-- Build a new rule -->
+            <div class="alerts-builder" id="alertsBuilder">
+                <h3 class="alerts-section-title">➕ New Alert Rule</h3>
+                <div class="alerts-form">
+                    <div class="alerts-field">
+                        <label class="alerts-label">Min Trade Size</label>
+                        <select class="alerts-select" id="alertMinSize">
+                            <option value="500">$500+</option>
+                            <option value="5000">$5K+</option>
+                            <option value="10000" selected>$10K+</option>
+                            <option value="50000">$50K+</option>
+                            <option value="100000">$100K+</option>
+                        </select>
+                    </div>
+                    <div class="alerts-field">
+                        <label class="alerts-label">Side</label>
+                        <select class="alerts-select" id="alertSide">
+                            <option value="both">Both YES &amp; NO</option>
+                            <option value="YES">YES only</option>
+                            <option value="NO">NO only</option>
+                        </select>
+                    </div>
+                    <div class="alerts-field alerts-field-wide">
+                        <label class="alerts-label">Market keyword (optional)</label>
+                        <input class="alerts-input" id="alertKeyword" type="text" placeholder="e.g. election, bitcoin, trump…" />
+                    </div>
+                    <div class="alerts-field alerts-field-wide">
+                        <label class="alerts-label">Wallet address (optional — watch a specific whale)</label>
+                        <input class="alerts-input" id="alertWallet" type="text" placeholder="e.g. 0x1234…abcd" />
+                    </div>
+                    <button class="btn-card btn-mock-follow" style="width:100%;margin-top:4px" onclick="saveAlertRule()">
+                        🔔 Save Alert Rule
+                    </button>
+                </div>
+            </div>
+
+            <!-- Existing rules list -->
+            <div class="alerts-rules-wrap">
+                <h3 class="alerts-section-title">📋 Active Rules</h3>
+                <div id="alertsRulesList">
+                    <div class="briefing-empty" id="alertsEmpty">
+                        <span style="font-size:32px">🔕</span>
+                        <div style="margin-top:8px;font-weight:700;color:var(--text-primary)">No rules saved yet</div>
+                        <div style="margin-top:4px;color:var(--text-muted);font-size:12px">Create a rule above to get browser notifications when whales match your criteria.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Permission prompt -->
+            <div class="alerts-permission" id="alertsPermission" style="display:none">
+                <span>🔔 Enable browser notifications to receive alerts even when PolyVision is in the background.</span>
+                <button class="btn-card btn-mock-follow" onclick="requestAlertPermission()">Enable Notifications</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ── INCOMING ALERT TOAST ──────────────────────────────────────────────────── -->
     <div class="toast-container" id="toastContainer"></div>
+
 
     <script src="app.js?v=19"></script>
 </body>
