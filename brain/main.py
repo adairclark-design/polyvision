@@ -48,6 +48,10 @@ from email_alerts     import (
     get_rules, save_rule, delete_rule,
     check_and_fire_email_alerts,
 )
+from market_resolver  import (
+    init_db        as init_resolver_db,
+    run_resolution_pass,
+)
 
 load_dotenv()
 
@@ -88,6 +92,7 @@ async def lifespan(app: FastAPI):
         try:
             init_db()
             init_email_alerts_db()
+            init_resolver_db()
             log.info('PostgreSQL tables initialized.')
         except Exception as e:
             log.warning(f'DB init skipped (no connection?): {e}')
@@ -101,8 +106,17 @@ async def lifespan(app: FastAPI):
         name=f'Morning Alpha Briefing ({BRIEFING_HOUR:02d}:00 EST)',
         replace_existing=True,
     )
+    # ── Daily Market Resolution Pass (06:00 EST, before the briefing) ──────────
+    scheduler.add_job(
+        lambda: asyncio.get_event_loop().run_in_executor(None, run_resolution_pass),
+        trigger=CronTrigger(hour=6, minute=0, timezone='America/New_York'),
+        id='market_resolution',
+        name='Daily Market Resolution Pass (06:00 EST)',
+        replace_existing=True,
+    )
     scheduler.start()
     log.info(f'Briefing scheduler started — fires daily at {BRIEFING_HOUR:02d}:00 EST.')
+    log.info('Market resolution cron scheduled — fires daily at 06:00 EST.')
 
     yield
     scheduler.shutdown(wait=False)
