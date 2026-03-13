@@ -2373,3 +2373,99 @@ button {
         justify-content: space-between;
     }
 }
+
+/* ── TOP MARKETS GRID ─────────────────────────────────────────────────────── */
+.markets-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.market-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    transition: var(--transition);
+    cursor: default;
+}
+
+.market-card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-accent);
+}
+
+.mc-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.mc-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    line-height: 1.45;
+    flex: 1;
+}
+
+.mc-hot-badge {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 700;
+    background: rgba(255, 100, 0, 0.15);
+    color: #ff6a00;
+    border: 1px solid rgba(255, 100, 0, 0.3);
+    border-radius: var(--radius-full);
+    padding: 3px 10px;
+    white-space: nowrap;
+}
+
+/* YES / NO probability bar */
+.mc-bar-wrap {
+    display: flex;
+    height: 6px;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    margin-bottom: 6px;
+    background: var(--bg-secondary);
+}
+
+.mc-bar-yes {
+    background: var(--mint);
+    transition: width 0.4s ease;
+}
+
+.mc-bar-no {
+    background: var(--rose);
+    transition: width 0.4s ease;
+}
+
+.mc-odds {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--text-mono);
+    margin-bottom: 10px;
+}
+
+.mc-yes { color: var(--mint); }
+.mc-no  { color: var(--rose); }
+
+.mc-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+}
+
+.mc-meta-item {
+    font-size: 10px;
+    color: var(--text-muted);
+}

@@ -158,11 +158,14 @@
         <main class="pulse-col" id="marketsCol" style="display:none;">
             <div class="section-header">
                 <h1 class="section-title">📊 Top Markets</h1>
-                <span class="section-subtitle">Coming soon</span>
+                <span class="section-subtitle">Hottest prediction markets right now</span>
+                <div class="sort-toggle">
+                    <button class="sort-btn active" id="mktSortVol">24H Volume</button>
+                    <button class="sort-btn" id="mktSortLiq">Liquidity</button>
+                </div>
             </div>
-            <div class="empty-state">
-                <span class="empty-icon">📊</span>
-                <span>Top Markets data is coming soon.</span>
+            <div class="markets-grid" id="marketsGrid">
+                <div class="lb-loading" id="marketsLoading">⏳ Loading top markets…</div>
             </div>
         </main>
 

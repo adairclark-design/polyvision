@@ -973,6 +973,7 @@ function switchView(navId) {
 
   // Trigger data loads
   if (navId === 'nav-whales') loadWhaleProfiles();
+  if (navId === 'nav-markets') loadTopMarkets();
 }
 
 document.querySelectorAll('.nav-item:not(.locked)').forEach(item => {
@@ -1042,6 +1043,83 @@ async function loadWhaleProfiles() {
 }
 
 
+// ── Top Markets Loader ──────────────────────────────────────────────────────
+let marketsData = [];
+let marketsSortBy = 'volume24hr';
+
+function renderMarkets() {
+  const grid = document.getElementById('marketsGrid');
+  if (!marketsData.length) return;
+
+  const sorted = [...marketsData].sort((a, b) => {
+    const key = marketsSortBy;
+    return parseFloat(b[key] || 0) - parseFloat(a[key] || 0);
+  });
+
+  grid.innerHTML = sorted.slice(0, 40).map((m, i) => {
+    const vol24h = parseFloat(m.volume24hr || m.volume || 0);
+    const liq    = parseFloat(m.liquidity || 0);
+    const price  = parseFloat(m.lastTradePrice || m.outcomePrices?.[0] || 0);
+    const pctYes = Math.round(price * 100);
+    const pctNo  = 100 - pctYes;
+    const title  = m.question || m.title || 'Unknown Market';
+    const endDate = m.endDate ? new Date(m.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+    const isHot  = vol24h > 50000;
+
+    return `
+    <div class="market-card">
+      <div class="mc-top">
+        <div class="mc-title">${title}</div>
+        ${isHot ? '<span class="mc-hot-badge">🔥 HOT</span>' : ''}
+      </div>
+      <div class="mc-bar-wrap">
+        <div class="mc-bar-yes" style="width:${pctYes}%"></div>
+        <div class="mc-bar-no"  style="width:${pctNo}%"></div>
+      </div>
+      <div class="mc-odds">
+        <span class="mc-yes">YES ${pctYes}¢</span>
+        <span class="mc-no">NO  ${pctNo}¢</span>
+      </div>
+      <div class="mc-meta">
+        <span class="mc-meta-item">📈 $${vol24h.toLocaleString('en-US', { maximumFractionDigits: 0 })} vol/24h</span>
+        <span class="mc-meta-item">💧 $${liq.toLocaleString('en-US', { maximumFractionDigits: 0 })} liq</span>
+        <span class="mc-meta-item">🗓 ${endDate}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadTopMarkets() {
+  if (marketsData.length) { renderMarkets(); return; } // already loaded
+  const grid = document.getElementById('marketsGrid');
+
+  try {
+    const resp = await fetch(
+      'https://gamma-api.polymarket.com/markets?limit=60&order=volume24hr&ascending=false&active=true'
+    );
+    const data = await resp.json();
+    marketsData = Array.isArray(data) ? data : (data.data || data.markets || []);
+
+    document.getElementById('marketsLoading')?.remove();
+    renderMarkets();
+
+    // Wire sort buttons now that data is loaded
+    const btnVol = document.getElementById('mktSortVol');
+    const btnLiq = document.getElementById('mktSortLiq');
+    if (btnVol) btnVol.onclick = () => {
+      marketsSortBy = 'volume24hr';
+      btnVol.classList.add('active'); btnLiq?.classList.remove('active');
+      renderMarkets();
+    };
+    if (btnLiq) btnLiq.onclick = () => {
+      marketsSortBy = 'liquidity';
+      btnLiq.classList.add('active'); btnVol?.classList.remove('active');
+      renderMarkets();
+    };
+  } catch (err) {
+    grid.innerHTML = `<div class="lb-loading">⚠️ Failed to load markets: ${err.message}</div>`;
+  }
+}
 
 // ── Startup (Clerk Auth Wrapper) ─────────────────────────────────────────────
 async function initAuth() {
