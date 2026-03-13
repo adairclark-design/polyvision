@@ -470,27 +470,42 @@ async def briefing_trigger(background_tasks: BackgroundTasks):
 async def ws_pulse(websocket: WebSocket):
     """
     Live WebSocket endpoint for the dashboard.
-    Sends the last 20 cached events on connect, then streams new alerts as they arrive.
+    On connect: sends last 50 cached events as a single history packet so
+    the frontend can seed the feed without triggering live alerts.
+    Then streams new alerts in real time.
     """
     await websocket.accept()
     ws_clients.append(websocket)
     log.info(f'Dashboard client connected. Total: {len(ws_clients)}')
 
     try:
-        # Send cache on connect
-        recent = await redis_client.zrevrange(CACHE_KEY, 0, 19)
-        for r in reversed(recent):
-            await websocket.send_text(r)
+        # ── Burst historical cache to new client (newest 50, sent oldest-first) ──
+        recent = await redis_client.zrevrange(CACHE_KEY, 0, 49)
+        if recent:
+            history_events = []
+            for raw in reversed(recent):   # oldest → newest so feed order is correct
+                try:
+                    history_events.append(json.loads(raw))
+                except Exception:
+                    pass
+            if history_events:
+                await websocket.send_text(json.dumps({
+                    'type':   'history',
+                    'events': history_events,
+                }))
+                log.info(f'Burst {len(history_events)} historical events to new client.')
 
-        # Stay open — new alerts are pushed by run_pipeline()
+        # ── Stay open — new alerts pushed by run_pipeline() ───────────────────
         while True:
             data = await websocket.receive_text()
-            # Client can send 'ping' to keep alive
             if data == 'ping':
                 await websocket.send_text('pong')
+
     except WebSocketDisconnect:
         ws_clients.remove(websocket)
         log.info(f'Dashboard client disconnected. Total: {len(ws_clients)}')
+
+
 
 @app.post('/cron/recalculate-profiles')
 async def recalculate_profiles():

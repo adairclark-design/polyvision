@@ -552,7 +552,52 @@ function connectLiveFeed() {
       const payload = JSON.parse(msg.data);
       if (!payload) return;
 
+      // ── Handle history burst on connect ──────────────────────────────────
+      if (payload.type === 'history' && Array.isArray(payload.events)) {
+        const maxEvents = window.isPro() ? 50 : 10;
+        let loaded = 0;
+        for (const p of payload.events) {
+          if (!p || (!p.alert_tier && !p.alert_id)) continue;
+          if (state.events.length >= maxEvents) break;
+          const ev = {
+            id:                  p.alert_id || Math.random().toString(36).slice(2),
+            tier:                p.alert_tier || 'STANDARD',
+            market:              p.market_title || 'Unknown Market',
+            marketId:            p.market_id || '',
+            outcome:             p.outcome || 'YES',
+            usdValue:            parseFloat(p.usd_value || 0),
+            price:               parseFloat(p.price || 0.5),
+            wallet_total_trades: parseInt(p.wallet_total_trades || 1),
+            wallet_total_volume: parseFloat(p.wallet_total_volume || p.usd_value || 10000),
+            timestamp:           p.timestamp ? new Date(p.timestamp).getTime() : Date.now(),
+            historical:          true,   // flag: don't animate or alert
+            whale: {
+              id:        'real-whale',
+              handle:    p.trader_handle || 'Unknown Whale',
+              wallet:    p.wallet_address || '',
+              avatar:    pickRandom(WHALES).avatar,
+              badge:     p.wallet_win_rate >= 0.6 ? 'Shark' : (p.wallet_win_rate !== undefined ? 'Pro' : 'Newcomer'),
+              winRate:   p.wallet_win_rate !== undefined ? parseFloat(p.wallet_win_rate) : 0,
+              roi30d:    parseFloat(p.wallet_roi_30d || 0),
+              sparkData: Array.from({ length: 12 }, () => Math.random() * 100),
+            },
+            reasoningChips: [],
+          };
+          state.events.push(ev);   // push to end (they arrive oldest-first)
+          loaded++;
+        }
+        if (loaded > 0) {
+          // Generate chips for historical events (no frequency context yet, that's fine)
+          state.events.forEach(ev => { if (!ev.reasoningChips?.length) ev.reasoningChips = generateChips(ev); });
+          renderFeed();
+          updateStats();
+          console.log(`[PolyVision] Seeded feed with ${loaded} historical events.`);
+        }
+        return;  // don't fall through to live-event handling
+      }
+
       // Handle standard / whale alerts
+
       if (payload.alert_tier || payload.alert_id) {
         // Map backend WhaleAlertPayload schema to frontend UI schema
         const ev = {
