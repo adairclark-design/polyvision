@@ -1245,31 +1245,106 @@ async function loadWhaleProfiles() {
 let marketsData = [];
 let marketsSortBy = 'volume24hr';
 
+// ── Market Categorization ─────────────────────────────────────────────────────
+const MARKET_CATEGORIES = [
+  { id: 'all',      label: '🌐 All',      keywords: [] },
+  { id: 'politics', label: '🗳 Politics',  keywords: ['election','president','vote','congress','senate','democrat','republican','trump','biden','harris','macron','uk ','eu ','nato','parliament','prime minister','governor','mayor'] },
+  { id: 'sports',   label: '🏆 Sports',    keywords: ['nba','nfl','nhl','mlb','ufc','soccer','football','basketball','baseball','tennis','golf','f1','racing','championship','playoffs','super bowl','world cup','league'] },
+  { id: 'crypto',   label: '₿ Crypto',   keywords: ['bitcoin','btc','eth','ethereum','crypto','sol','solana','doge','xrp','coinbase','binance','defi','nft','blockchain','usdc','tether','fed rate','interest rate','inflation','fomc'] },
+  { id: 'world',    label: '🌍 World',    keywords: ['war','ukraine','russia','china','taiwan','israel','france','germany','japan','india','iran','middle east','ceasefire','sanctions'] },
+];
+
+let activeCategoryFilter = 'all';
+
+function categorizeMarket(title) {
+  const t = (title || '').toLowerCase();
+  for (const cat of MARKET_CATEGORIES.slice(1)) {  // skip 'all'
+    if (cat.keywords.some(kw => t.includes(kw))) return cat.id;
+  }
+  return 'world';  // default bucket
+}
+
+/** Compute whale consensus for a market title from the live feed. */
+function getWhaleConsensus(marketTitle) {
+  if (!state.events?.length) return null;
+  const t = (marketTitle || '').toLowerCase();
+  const relevant = state.events.filter(ev =>
+    ev.market && ev.market.toLowerCase().includes(t.slice(0, 30))
+  );
+  if (!relevant.length) return null;
+  const yesCount = relevant.filter(ev => (ev.outcome || '').toUpperCase() === 'YES').length;
+  const noCount  = relevant.filter(ev => (ev.outcome || '').toUpperCase() === 'NO').length;
+  const total    = yesCount + noCount;
+  if (!total) return null;
+  return { yes: yesCount, no: noCount, total };
+}
+
 function renderMarkets() {
   const grid = document.getElementById('marketsGrid');
   if (!marketsData.length) return;
 
-  const sorted = [...marketsData].sort((a, b) => {
-    const key = marketsSortBy;
-    return parseFloat(b[key] || 0) - parseFloat(a[key] || 0);
+  // ── Category filter pills ──────────────────────────────────────────────────
+  const pillsId = 'marketCategoryPills';
+  if (!document.getElementById(pillsId)) {
+    const pillsEl = document.createElement('div');
+    pillsEl.id        = pillsId;
+    pillsEl.className = 'market-category-pills';
+    grid.parentElement?.insertBefore(pillsEl, grid);
+  }
+  const pillsEl = document.getElementById(pillsId);
+  if (pillsEl) {
+    pillsEl.innerHTML = MARKET_CATEGORIES.map(c =>
+      `<button class="cat-pill ${c.id === activeCategoryFilter ? 'active' : ''}" onclick="setMarketCategory('${c.id}')">${c.label}</button>`
+    ).join('');
+  }
+
+  // ── Filter + sort ──────────────────────────────────────────────────────────
+  let filtered = marketsData;
+  if (activeCategoryFilter !== 'all') {
+    filtered = marketsData.filter(m => categorizeMarket(m.question) === activeCategoryFilter);
+  }
+  const sorted = [...filtered].sort((a, b) => {
+    return parseFloat(b[marketsSortBy] || 0) - parseFloat(a[marketsSortBy] || 0);
   });
 
-  grid.innerHTML = sorted.slice(0, 40).map((m, i) => {
-    const vol24h = parseFloat(m.volume24hr || m.volume || 0);
-    const liq    = parseFloat(m.liquidity || 0);
-    const price  = parseFloat(m.lastTradePrice || m.outcomePrices?.[0] || 0);
-    const pctYes = Math.round(price * 100);
-    const pctNo  = 100 - pctYes;
-    const title  = m.question || m.title || 'Unknown Market';
+  if (!sorted.length) {
+    grid.innerHTML = `<div class="lb-loading">No markets found in this category yet.</div>`;
+    return;
+  }
+
+  grid.innerHTML = sorted.slice(0, 40).map((m) => {
+    const vol24h  = parseFloat(m.volume24hr || m.volume || 0);
+    const liq     = parseFloat(m.liquidity || 0);
+    const price   = parseFloat(m.lastTradePrice || m.outcomePrices?.[0] || 0);
+    const pctYes  = Math.round(price * 100);
+    const pctNo   = 100 - pctYes;
+    const title   = m.question || m.title || 'Unknown Market';
     const endDate = m.endDate ? new Date(m.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-    const isHot  = vol24h > 50000;
+    const isHot   = vol24h > 50000;
+    const cat     = MARKET_CATEGORIES.find(c => c.id === categorizeMarket(title));
+    const catEmoji = cat ? cat.label.split(' ')[0] : '🌍';
+
+    // Whale Consensus Badge
+    const consensus = getWhaleConsensus(title);
+    const consensusBadge = consensus
+      ? `<div class="mc-consensus">
+           🐋 ${consensus.yes > 0 ? `<span style="color:var(--mint)">${consensus.yes} YES</span>` : ''}
+           ${consensus.yes > 0 && consensus.no > 0 ? ' / ' : ''}
+           ${consensus.no > 0 ? `<span style="color:var(--rose)">${consensus.no} NO</span>` : ''}
+           <span style="color:var(--text-muted);font-size:10px"> from tracked whales</span>
+         </div>`
+      : '';
 
     return `
     <div class="market-card">
       <div class="mc-top">
         <div class="mc-title">${title}</div>
-        ${isHot ? '<span class="mc-hot-badge">🔥 HOT</span>' : ''}
+        <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+          <span class="mc-category-badge">${catEmoji}</span>
+          ${isHot ? '<span class="mc-hot-badge">🔥 HOT</span>' : ''}
+        </div>
       </div>
+      ${consensusBadge}
       <div class="mc-bar-wrap">
         <div class="mc-bar-yes" style="width:${pctYes}%"></div>
         <div class="mc-bar-no"  style="width:${pctNo}%"></div>
@@ -1286,6 +1361,13 @@ function renderMarkets() {
     </div>`;
   }).join('');
 }
+
+window.setMarketCategory = function(catId) {
+  activeCategoryFilter = catId;
+  renderMarkets();
+};
+
+
 
 async function loadTopMarkets() {
   if (marketsData.length) { renderMarkets(); return; } // already loaded

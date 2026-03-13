@@ -24,13 +24,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Config ────────────────────────────────────────────────────────────────────
-ONESIGNAL_APP_ID  = os.getenv("ONESIGNAL_APP_ID", "")
-ONESIGNAL_API_KEY = os.getenv("ONESIGNAL_API_KEY", "")
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN", "")
-DISCORD_CHANNEL_ID= os.getenv("DISCORD_CHANNEL_ID", "")
-TELEGRAM_BOT_TOKEN= os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID", "")
-REDIS_URL         = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+ONESIGNAL_APP_ID   = os.getenv("ONESIGNAL_APP_ID", "")
+ONESIGNAL_API_KEY  = os.getenv("ONESIGNAL_API_KEY", "")
+DISCORD_WEBHOOK_URL= os.getenv("DISCORD_WEBHOOK_URL", "")   # preferred: channel webhook URL
+DISCORD_BOT_TOKEN  = os.getenv("DISCORD_BOT_TOKEN", "")    # fallback: bot token
+DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
+REDIS_URL          = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 RATE_LIMIT_WHALE_TTL    = 300   # 5 minutes: one WHALE alert per market
 RATE_LIMIT_STANDARD_MAX = 10    # max STANDARD alerts per hour
@@ -188,8 +189,13 @@ def send_onesignal(push: dict):
 
 
 def send_discord(embed: dict):
+    """Send to Discord via webhook URL (preferred) or bot token."""
+    if DISCORD_WEBHOOK_URL:
+        r = requests.post(DISCORD_WEBHOOK_URL, json=embed, timeout=10)
+        r.raise_for_status()
+        return
     if not DISCORD_BOT_TOKEN or not DISCORD_CHANNEL_ID:
-        raise ValueError("Discord credentials not set.")
+        raise ValueError("Neither DISCORD_WEBHOOK_URL nor DISCORD_BOT_TOKEN set.")
     r = requests.post(
         f"https://discord.com/api/v10/channels/{DISCORD_CHANNEL_ID}/messages",
         headers={"Authorization": f"Bot {DISCORD_BOT_TOKEN}", "Content-Type": "application/json"},

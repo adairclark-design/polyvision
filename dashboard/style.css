@@ -2425,6 +2425,50 @@ button {
     white-space: nowrap;
 }
 
+/* ── Category Filter Pills ─────────────────────────────────────────────────── */
+.market-category-pills {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 0 0 14px 0;
+}
+.cat-pill {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    border-radius: var(--radius-full);
+    padding: 5px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    white-space: nowrap;
+}
+.cat-pill:hover  { border-color: var(--mint); color: var(--mint); }
+.cat-pill.active { background: var(--mint); border-color: var(--mint); color: #0d1117; }
+
+/* Category emoji badge on market card */
+.mc-category-badge {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+/* ── Whale Consensus Badge ────────────────────────────────────────────────── */
+.mc-consensus {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(0, 255, 163, 0.05);
+    border: 1px solid rgba(0, 255, 163, 0.15);
+    border-radius: 8px;
+    padding: 5px 10px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+}
+
+
 /* YES / NO probability bar */
 .mc-bar-wrap {
     display: flex;
