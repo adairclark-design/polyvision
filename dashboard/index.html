@@ -380,6 +380,10 @@
             <div class="alerts-builder" id="alertsBuilder">
                 <h3 class="alerts-section-title">➕ New Alert Rule</h3>
                 <div class="alerts-form">
+                    <div class="alerts-field alerts-field-wide">
+                        <label class="alerts-label">📧 Your Email (for alerts when PolyVision is closed)</label>
+                        <input class="alerts-input" id="alertEmail" type="email" placeholder="you@example.com" autocomplete="email" />
+                    </div>
                     <div class="alerts-field">
                         <label class="alerts-label">Min Trade Size</label>
                         <select class="alerts-select" id="alertMinSize">
@@ -411,6 +415,7 @@
                     </button>
                 </div>
             </div>
+
 
             <!-- Existing rules list -->
             <div class="alerts-rules-wrap">

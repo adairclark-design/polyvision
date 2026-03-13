@@ -43,6 +43,11 @@ from leaderboard      import get_leaderboard
 from wallet_xray      import get_xray as get_wallet_xray
 from cluster_detector import check_cluster
 from morning_briefing import run_briefing as _run_briefing
+from email_alerts     import (
+    init_db as init_email_alerts_db,
+    get_rules, save_rule, delete_rule,
+    check_and_fire_email_alerts,
+)
 
 load_dotenv()
 
@@ -82,6 +87,7 @@ async def lifespan(app: FastAPI):
     if DATABASE_URL:
         try:
             init_db()
+            init_email_alerts_db()
             log.info('PostgreSQL tables initialized.')
         except Exception as e:
             log.warning(f'DB init skipped (no connection?): {e}')
@@ -192,7 +198,12 @@ async def run_pipeline(event_dict: dict):
         for ws in dead:
             ws_clients.remove(ws)
 
-        # 6. Notify (push / Discord / Telegram) — run in executor to not block
+        # 6. Email alerts — check all stored user rules server-side
+        await asyncio.get_event_loop().run_in_executor(
+            None, check_and_fire_email_alerts, alert
+        )
+
+        # 7. Push/Discord/Telegram notify
         await asyncio.get_event_loop().run_in_executor(
             None, deliver, alert, False
         )
@@ -258,6 +269,82 @@ async def leaderboard_endpoint(limit: int = 100, refresh: bool = False):
         None, lambda: get_leaderboard(limit=min(limit, 100), force_refresh=refresh)
     )
     return {'count': len(rows), 'traders': rows}
+
+
+# ── Alert Rules Endpoints ──────────────────────────────────────────────────────
+
+class AlertRuleRequest(BaseModel):
+    id:       str
+    email:    str
+    min_size: float = 10000
+    side:     str   = 'both'
+    keyword:  str   = ''
+    wallet:   str   = ''
+
+async def _clerk_user_id(request: Request) -> Optional[str]:
+    """Extract Clerk user_id from Authorization: Bearer <session_token> header."""
+    auth = request.headers.get('Authorization', '')
+    if not auth.startswith('Bearer '):
+        return None
+    token = auth[7:]
+    if not CLERK_SECRET_KEY:
+        # fallback: treat token as user_id directly (for testing)
+        return token or None
+    try:
+        resp = httpx.get(
+            'https://api.clerk.com/v1/sessions/' + token,
+            headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
+            timeout=5,
+        )
+        data = resp.json()
+        return data.get('user_id') or data.get('id')
+    except Exception:
+        return None
+
+@app.get('/alerts/rules')
+async def get_alert_rules(request: Request):
+    """Return all saved alert rules for the authenticated user."""
+    user_id = await _clerk_user_id(request)
+    if not user_id:
+        raise HTTPException(401, 'Unauthorized')
+    rules = await asyncio.get_event_loop().run_in_executor(
+        None, get_rules, user_id
+    )
+    return {'rules': rules}
+
+@app.post('/alerts/rules', status_code=201)
+async def create_alert_rule(req: AlertRuleRequest, request: Request):
+    """Save a new alert rule for the authenticated user."""
+    user_id = await _clerk_user_id(request)
+    if not user_id:
+        raise HTTPException(401, 'Unauthorized')
+    rule = await asyncio.get_event_loop().run_in_executor(
+        None, save_rule, {
+            'id':       req.id,
+            'user_id':  user_id,
+            'email':    req.email,
+            'min_size': req.min_size,
+            'side':     req.side,
+            'keyword':  req.keyword,
+            'wallet':   req.wallet,
+        }
+    )
+    return {'status': 'created', 'rule': rule}
+
+@app.delete('/alerts/rules/{rule_id}', status_code=200)
+async def remove_alert_rule(rule_id: str, request: Request):
+    """Delete an alert rule by ID (only the owning user can delete)."""
+    user_id = await _clerk_user_id(request)
+    if not user_id:
+        raise HTTPException(401, 'Unauthorized')
+    deleted = await asyncio.get_event_loop().run_in_executor(
+        None, delete_rule, rule_id, user_id
+    )
+    if not deleted:
+        raise HTTPException(404, 'Rule not found or not owned by this user.')
+    return {'status': 'deleted', 'rule_id': rule_id}
+
+
 
 
 @app.get('/wallet/{address}/xray')

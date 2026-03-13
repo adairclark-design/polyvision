@@ -2157,7 +2157,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Custom Alerts System ──────────────────────────────────────────────────────
 
-const ALERTS_KEY = 'pv_alert_rules';
+const ALERTS_KEY   = 'pv_alert_rules';    // localStorage cache for browser toasts
+const ALERTS_EMAIL = 'pv_alert_email';    // remember user's email between sessions
 
 function loadAlertRules() {
   try { return JSON.parse(localStorage.getItem(ALERTS_KEY) || '[]'); }
@@ -2168,10 +2169,79 @@ function saveAlertRules(rules) {
   localStorage.setItem(ALERTS_KEY, JSON.stringify(rules));
 }
 
+/** Get a Railway-auth token — uses Clerk session token */
+async function getAuthHeader() {
+  try {
+    const token = await window.Clerk?.session?.getToken();
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  } catch { return {}; }
+}
+
+/** Sync rules TO backend (fire-and-forget) */
+async function pushRuleToBackend(rule) {
+  const BRAIN = window.ENV_BRAIN_URL || 'https://polyvision-brain.railway.app';
+  try {
+    const headers = await getAuthHeader();
+    await fetch(`${BRAIN}/alerts/rules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(rule),
+    });
+  } catch (e) {
+    console.warn('Backend alert sync failed (rules still saved locally):', e);
+  }
+}
+
+/** Delete rule from backend */
+async function deleteRuleFromBackend(ruleId) {
+  const BRAIN = window.ENV_BRAIN_URL || 'https://polyvision-brain.railway.app';
+  try {
+    const headers = await getAuthHeader();
+    await fetch(`${BRAIN}/alerts/rules/${ruleId}`, {
+      method: 'DELETE',
+      headers,
+    });
+  } catch (e) {
+    console.warn('Backend rule delete failed:', e);
+  }
+}
+
+/** Load rules FROM backend and merge into localStorage */
+async function syncRulesFromBackend() {
+  const BRAIN = window.ENV_BRAIN_URL || 'https://polyvision-brain.railway.app';
+  try {
+    const headers = await getAuthHeader();
+    const resp = await fetch(`${BRAIN}/alerts/rules`, { headers });
+    if (!resp.ok) return;
+    const { rules } = await resp.json();
+    if (Array.isArray(rules) && rules.length) {
+      // Normalize backend snake_case to camelCase for frontend
+      const normalized = rules.map(r => ({
+        id:      r.id,
+        minSize: parseFloat(r.min_size || 10000),
+        side:    r.side || 'both',
+        keyword: r.keyword || '',
+        wallet:  r.wallet || '',
+        email:   r.email || '',
+        created: r.created_at
+          ? new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+          : '—',
+      }));
+      saveAlertRules(normalized);
+    }
+  } catch (e) {
+    console.warn('Backend rule sync skipped:', e);
+  }
+}
+
 window.openAlerts = function () {
   $('alertsOverlay').classList.add('active');
+  // Pre-fill email from last save
+  const savedEmail = localStorage.getItem(ALERTS_EMAIL) || '';
+  if (savedEmail && $('alertEmail')) $('alertEmail').value = savedEmail;
   renderAlertRules();
-  // Show browser permission prompt if not yet granted
+  // Sync from backend in background then re-render
+  syncRulesFromBackend().then(renderAlertRules);
   if (Notification.permission === 'default') {
     $('alertsPermission').style.display = 'flex';
   } else {
@@ -2192,13 +2262,24 @@ window.requestAlertPermission = async function () {
 };
 
 window.saveAlertRule = function () {
+  const email   = ($('alertEmail')?.value || '').trim();
   const minSize = parseInt($('alertMinSize').value || 10000);
   const side    = $('alertSide').value || 'both';
   const keyword = ($('alertKeyword').value || '').trim().toLowerCase();
   const wallet  = ($('alertWallet').value || '').trim().toLowerCase();
 
+  if (!email) {
+    showToast({ tier: 'INFO', whale: { handle: '⚠️ Email required' }, market: 'Please enter your email so we can notify you when browser is closed.', outcome: 'INFO', usdValue: 0, timestamp: Date.now() });
+    $('alertEmail')?.focus();
+    return;
+  }
+
+  // Save email for next time
+  localStorage.setItem(ALERTS_EMAIL, email);
+
   const rule = {
     id:      Date.now().toString(),
+    email,
     minSize,
     side,
     keyword,
@@ -2210,17 +2291,28 @@ window.saveAlertRule = function () {
   rules.push(rule);
   saveAlertRules(rules);
 
-  // Reset inputs
+  // Push to backend (email alerts even when tab is closed)
+  pushRuleToBackend({
+    id:       rule.id,
+    email:    rule.email,
+    min_size: rule.minSize,
+    side:     rule.side,
+    keyword:  rule.keyword,
+    wallet:   rule.wallet,
+  });
+
+  // Reset inputs (keep email)
   $('alertKeyword').value = '';
   $('alertWallet').value  = '';
 
   renderAlertRules();
-  showToast({ tier: 'INFO', whale: { handle: '✅ Rule saved' }, market: `Min $${minSize.toLocaleString()} · ${side} · ${keyword || 'Any market'}`, outcome: 'OK', usdValue: 0, timestamp: Date.now() });
+  showToast({ tier: 'INFO', whale: { handle: '✅ Rule saved' }, market: `Min $${minSize.toLocaleString()} · ${side} · ${keyword || 'Any market'} · 📧 ${email}`, outcome: 'OK', usdValue: 0, timestamp: Date.now() });
 };
 
 window.deleteAlertRule = function (id) {
   const rules = loadAlertRules().filter(r => r.id !== id);
   saveAlertRules(rules);
+  deleteRuleFromBackend(id);
   renderAlertRules();
 };
 
@@ -2232,28 +2324,34 @@ function renderAlertRules() {
     list.innerHTML = `<div class="briefing-empty" id="alertsEmpty">
       <span style="font-size:32px">🔕</span>
       <div style="margin-top:8px;font-weight:700;color:var(--text-primary)">No rules saved yet</div>
-      <div style="margin-top:4px;color:var(--text-muted);font-size:12px">Create a rule above to get notified when whales match your criteria.</div>
+      <div style="margin-top:4px;color:var(--text-muted);font-size:12px">Create a rule above to get notified by email and in-browser when whales match your criteria.</div>
     </div>`;
     return;
   }
 
   list.innerHTML = rules.map(r => {
     const parts = [
-      `Min $${r.minSize.toLocaleString()}`,
+      `Min $${(r.minSize || 0).toLocaleString()}`,
       r.side !== 'both' ? r.side + ' only' : 'YES & NO',
       r.keyword ? `"${r.keyword}"` : '',
       r.wallet  ? `wallet: ${r.wallet.slice(0, 8)}…` : '',
     ].filter(Boolean).join(' · ');
 
+    const emailBadge = r.email
+      ? `<span style="font-size:10px;color:var(--mint);margin-left:4px">📧 ${r.email}</span>`
+      : `<span style="font-size:10px;color:var(--rose);margin-left:4px">⚠️ Browser only</span>`;
+
     return `<div class="alert-rule-row">
       <div class="alert-rule-info">
         <span class="alert-rule-label">${parts}</span>
+        ${emailBadge}
         <span class="alert-rule-date">Added ${r.created}</span>
       </div>
       <button class="alert-rule-delete" onclick="deleteAlertRule('${r.id}')">✕</button>
     </div>`;
   }).join('');
 }
+
 
 /** Called from the WebSocket onmessage handler for every incoming trade event */
 function checkEventAgainstRules(ev) {
