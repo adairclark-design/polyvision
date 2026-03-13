@@ -541,7 +541,6 @@ async def ws_pulse(websocket: WebSocket):
 
 
 
-@app.post('/cron/recalculate-profiles')
 
 # ── Stripe Checkout & Subscription Management ────────────────────────────────
 
@@ -627,6 +626,8 @@ async def subscription_status(clerk_user_id: str):
     return get_subscription(clerk_user_id)
 
 
+# ── Profile Recalculation Cron ───────────────────────────────────────────────
+@app.post('/cron/recalculate-profiles')
 async def recalculate_profiles():
     """
     Called by the 03:00 UTC cron job (see deploy/cron_jobs.yml).
