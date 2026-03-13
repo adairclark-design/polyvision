@@ -84,6 +84,14 @@ STRIPE_PRICE_ID       = os.getenv('STRIPE_PRICE_ID', '')     # price_1ABC... fro
 CLERK_SECRET_KEY      = os.getenv('CLERK_SECRET_KEY', '')
 SENTRY_DSN            = os.getenv('SENTRY_DSN', '')
 
+os.makedirs('.tmp', exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [BRAIN] %(levelname)s: %(message)s',
+    handlers=[logging.StreamHandler()],
+)
+log = logging.getLogger(__name__)
+
 if STRIPE_API_KEY:
     stripe.api_key = STRIPE_API_KEY
 
@@ -95,16 +103,9 @@ if SENTRY_DSN and SENTRY_AVAILABLE:
         environment=os.getenv('RAILWAY_ENVIRONMENT', 'development'),
         release='polyvision@1.0.0',
     )
+    log.info('Sentry initialized.')
 elif SENTRY_DSN and not SENTRY_AVAILABLE:
-    print('[WARN] SENTRY_DSN set but sentry-sdk not installed. Run: pip install sentry-sdk[fastapi]')
-
-os.makedirs('.tmp', exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [BRAIN] %(levelname)s: %(message)s',
-    handlers=[logging.StreamHandler(), logging.FileHandler(LOG_FILE)],
-)
-log = logging.getLogger(__name__)
+    log.warning('SENTRY_DSN set but sentry-sdk not installed. Run: pip install "sentry-sdk[fastapi]"')
 
 # ── Global connections ────────────────────────────────────────────────────────
 redis_client: Optional[aioredis.Redis] = None
