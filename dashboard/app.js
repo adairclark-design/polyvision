@@ -1177,33 +1177,55 @@ async function loadTopMarkets() {
   if (marketsData.length) { renderMarkets(); return; } // already loaded
   const grid = document.getElementById('marketsGrid');
 
-  try {
-    const resp = await fetch(
-      'https://gamma-api.polymarket.com/markets?limit=60&order=volume24hr&ascending=false&active=true'
-    );
-    const data = await resp.json();
-    marketsData = Array.isArray(data) ? data : (data.data || data.markets || []);
+  // Try data-api first (CORS-friendly, works from Cloudflare Pages)
+  const endpoints = [
+    'https://data-api.polymarket.com/markets?limit=60&order=volume24hr&ascending=false&active=true',
+    'https://gamma-api.polymarket.com/markets?limit=60&order=volume24hr&ascending=false&active=true',
+  ];
 
-    document.getElementById('marketsLoading')?.remove();
-    renderMarkets();
+  for (const url of endpoints) {
+    try {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!resp.ok) continue;
+      const data = await resp.json();
+      const raw = Array.isArray(data) ? data : (data.data || data.markets || []);
 
-    // Wire sort buttons now that data is loaded
-    const btnVol = document.getElementById('mktSortVol');
-    const btnLiq = document.getElementById('mktSortLiq');
-    if (btnVol) btnVol.onclick = () => {
-      marketsSortBy = 'volume24hr';
-      btnVol.classList.add('active'); btnLiq?.classList.remove('active');
+      // Normalize field names — data-api uses camelCase slightly differently
+      marketsData = raw.map(m => ({
+        question:      m.question || m.title || m.name || 'Unknown Market',
+        volume24hr:    parseFloat(m.volume24hr || m.volume_24hr || m.oneDayVolume || 0),
+        liquidity:     parseFloat(m.liquidity || m.liquidityNum || 0),
+        lastTradePrice: parseFloat(m.lastTradePrice || m.lastPrice || m.price || 0.5),
+        endDate:       m.endDate || m.end_date || null,
+        outcomePrices: m.outcomePrices || [],
+      }));
+
+      document.getElementById('marketsLoading')?.remove();
       renderMarkets();
-    };
-    if (btnLiq) btnLiq.onclick = () => {
-      marketsSortBy = 'liquidity';
-      btnLiq.classList.add('active'); btnVol?.classList.remove('active');
-      renderMarkets();
-    };
-  } catch (err) {
-    grid.innerHTML = `<div class="lb-loading">⚠️ Failed to load markets: ${err.message}</div>`;
+
+      // Wire sort buttons
+      const btnVol = document.getElementById('mktSortVol');
+      const btnLiq = document.getElementById('mktSortLiq');
+      if (btnVol) btnVol.onclick = () => {
+        marketsSortBy = 'volume24hr';
+        btnVol.classList.add('active'); btnLiq?.classList.remove('active');
+        renderMarkets();
+      };
+      if (btnLiq) btnLiq.onclick = () => {
+        marketsSortBy = 'liquidity';
+        btnLiq.classList.add('active'); btnVol?.classList.remove('active');
+        renderMarkets();
+      };
+      return; // success — stop trying
+    } catch (_) {
+      // Try next endpoint
+    }
   }
+
+  // Both failed
+  grid.innerHTML = `<div class="lb-loading">⚠️ Could not load markets. Check your internet connection.</div>`;
 }
+
 
 // ── Startup (Clerk Auth Wrapper) ─────────────────────────────────────────────
 async function initAuth() {
