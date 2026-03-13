@@ -25,9 +25,13 @@ import psycopg2
 import psycopg2.extras
 import httpx
 import stripe
-import sentry_sdk
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.starlette import StarletteIntegration
+try:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+    SENTRY_AVAILABLE = True
+except ImportError:
+    SENTRY_AVAILABLE = False
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -83,7 +87,7 @@ SENTRY_DSN            = os.getenv('SENTRY_DSN', '')
 if STRIPE_API_KEY:
     stripe.api_key = STRIPE_API_KEY
 
-if SENTRY_DSN:
+if SENTRY_DSN and SENTRY_AVAILABLE:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
         integrations=[FastApiIntegration(), StarletteIntegration()],
@@ -91,7 +95,8 @@ if SENTRY_DSN:
         environment=os.getenv('RAILWAY_ENVIRONMENT', 'development'),
         release='polyvision@1.0.0',
     )
-    log.info('Sentry initialized.')
+elif SENTRY_DSN and not SENTRY_AVAILABLE:
+    print('[WARN] SENTRY_DSN set but sentry-sdk not installed. Run: pip install sentry-sdk[fastapi]')
 
 os.makedirs('.tmp', exist_ok=True)
 logging.basicConfig(
@@ -567,7 +572,7 @@ async def create_checkout_session(body: CheckoutRequest):
             metadata={'clerk_user_id': body.clerk_user_id},
         )
         return {'url': session.url, 'session_id': session.id}
-    except stripe.error.StripeError as e:
+    except Exception as e:
         raise HTTPException(400, str(e))
 
 
@@ -578,10 +583,10 @@ async def stripe_webhook(request: Request):
     sig       = request.headers.get('stripe-signature', '')
     try:
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-    except stripe.error.SignatureVerificationError:
-        raise HTTPException(400, 'Invalid Stripe signature')
     except ValueError:
         raise HTTPException(400, 'Invalid payload')
+    except Exception:
+        raise HTTPException(400, 'Invalid Stripe signature')
 
     etype = event['type']
     data  = event['data']['object']
