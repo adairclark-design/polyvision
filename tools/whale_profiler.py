@@ -109,7 +109,11 @@ def upsert_wallet(conn, trade: dict) -> dict:
     now      = datetime.now(timezone.utc).isoformat()
 
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-        # Upsert wallet
+        # 1. Determine if this wallet already exists
+        cur.execute("SELECT wallet_address FROM wallets WHERE wallet_address = %s;", (addr,))
+        is_new_wallet = cur.fetchone() is None
+
+        # 2. Upsert wallet
         cur.execute("""
             INSERT INTO wallets (wallet_address, handle, total_trades, total_volume_usd, last_seen)
             VALUES (%s, %s, 1, %s, NOW())
@@ -121,7 +125,31 @@ def upsert_wallet(conn, trade: dict) -> dict:
         """, (addr, handle, usd))
         wallet_row = dict(cur.fetchone())
 
-        # Insert trade (deduplication via ON CONFLICT DO NOTHING)
+        # 3. If brand new, fetch real historical data from Polymarket API to prepopulate
+        if is_new_wallet:
+            try:
+                # Local import to prevent circular dependencies if tools import each other
+                import tools.wallet_xray as xray
+                log.info(f"New wallet detected {addr[:8]}... Triggering live historical backfill.")
+                profile_stats = xray.get_xray(addr, force_refresh=True)
+
+                if profile_stats and profile_stats.get('win_rate'):
+                    real_win_rate = profile_stats['win_rate']
+                    real_roi = profile_stats.get('all_time_pnl', 0)
+                    real_vol = max((usd, profile_stats.get('all_time_vol', usd)))
+
+                    cur.execute("""
+                        UPDATE wallets 
+                        SET win_rate = %s, roi_all_time = %s, total_volume_usd = %s
+                        WHERE wallet_address = %s
+                        RETURNING *;
+                    """, (real_win_rate, real_roi, real_vol, addr))
+                    wallet_row = dict(cur.fetchone())
+                    log.info(f"Backfill complete: Win Rate {real_win_rate * 100}%, PNL {real_roi}")
+            except Exception as e:
+                log.warning(f"Failed to backfill historical data for {addr}: {e}")
+
+        # 4. Insert trade (deduplication via ON CONFLICT DO NOTHING)
         cur.execute("""
             INSERT INTO trades (id, wallet_address, market_id, market_title, outcome,
                                 price, size, usd_value, side)

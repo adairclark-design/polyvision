@@ -429,8 +429,8 @@ function connectLiveFeed() {
             handle: payload.trader_handle || 'Unknown Whale',
             wallet: payload.wallet_address || '',
             avatar: pickRandom(WHALES).avatar,
-            badge: payload.wallet_win_rate >= 0.6 ? 'Shark' : (payload.wallet_win_rate ? 'Pro' : 'Newcomer'),
-            winRate: parseFloat(payload.wallet_win_rate || 0.5),
+            badge: payload.wallet_win_rate >= 0.6 ? 'Shark' : (payload.wallet_win_rate !== undefined ? 'Pro' : 'Newcomer'),
+            winRate: payload.wallet_win_rate !== undefined ? parseFloat(payload.wallet_win_rate) : 0,
             roi30d: parseFloat(payload.wallet_roi_30d || 0),
             sparkData: Array.from({ length: 12 }, () => Math.random() * 100),
           },
@@ -1076,7 +1076,7 @@ function renderGlobalLeaderboard(traders) {
     const isTop3 = t.rank <= 3;
     const pnlPos = t.pnl >= 0;
     const pnlStr = (pnlPos ? '+$' : '-$') + Math.abs(t.pnl).toLocaleString('en-US', { maximumFractionDigits: 0 });
-    const winStr = t.win_rate ? `${(t.win_rate * 100).toFixed(0)}% win` : '';
+    const winStr = t.win_rate !== undefined && t.win_rate !== null ? `${(t.win_rate * 100).toFixed(0)}% win` : '';
     const tradesStr = t.trades ? `${t.trades.toLocaleString()} trades` : '';
     const meta = [winStr, tradesStr].filter(Boolean).join(' · ');
     const shortWallet = t.wallet ? `${t.wallet.slice(0, 6)}…${t.wallet.slice(-4)}` : '';
@@ -1114,7 +1114,7 @@ window.openLbTraderModal = function (wallet, handle, traderData) {
             </div>
             <div class="stat-block">
                 <span class="stat-label">Win Rate</span>
-                <span class="stat-value">${trader.win_rate ? (trader.win_rate * 100).toFixed(1) + '%' : 'N/A'}</span>
+                <span class="stat-value">${trader.win_rate !== undefined && trader.win_rate !== null ? (trader.win_rate * 100).toFixed(1) + '%' : '0.0%'}</span>
             </div>
             <div class="stat-block">
                 <span class="stat-label">Total Trades</span>
