@@ -27,6 +27,16 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Optional: notifier for push alerts
+try:
+    sys.path.insert(0, os.path.dirname(__file__))
+    from notifier import send_onesignal
+except ImportError:
+    send_onesignal = None
+
+RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
+RESEND_FROM    = os.getenv('RESEND_FROM', 'alerts@polyvision.io')
+
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 logging.basicConfig(
@@ -199,6 +209,9 @@ def resolve_pending_trades() -> dict:
             summary["trades_updated"] += rows_updated
             log.info(f"✅ Resolved '{market_id[:30]}' — winner: {winner} ({rows_updated} trades updated)")
 
+            # ── Fire resolution alerts for users who followed this market ────
+            _send_resolution_alerts(conn, market_id, winner)
+
         # Recalculate win_rate for all wallets that had trades resolved
         wallets_updated = _recalculate_all_win_rates(conn)
         summary["wallets_updated"] = wallets_updated
@@ -213,12 +226,89 @@ def resolve_pending_trades() -> dict:
     return summary
 
 
+def _send_resolution_alerts(conn, market_id: str, winner: str):
+    """
+    Fire email + push alerts to users who paper-followed trades on this market.
+    Queries paper_trades table for rows with matching market_id.
+    """
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("""
+                SELECT pt.clerk_user_id, pt.market_title, pt.outcome,
+                       pt.invested, pt.current_price, pt.entry_price,
+                       u_email.email
+                FROM paper_trades pt
+                LEFT JOIN (
+                    SELECT clerk_user_id,
+                           email
+                    FROM alert_rules
+                    WHERE email IS NOT NULL
+                    GROUP BY clerk_user_id, email
+                ) u_email ON u_email.clerk_user_id = pt.clerk_user_id
+                WHERE pt.market_id = %s
+                  AND pt.status IN ('open', 'active')
+            """, (market_id,))
+            followers = cur.fetchall()
+
+        if not followers:
+            return
+
+        for f in followers:
+            user_won = (f['outcome'] or '').upper() == winner.upper()
+            invested = f.get('invested') or 0
+            pnl_estimate = round(invested * (1 / max(f.get('entry_price') or 0.5, 0.01) - 1), 0) if user_won else -invested
+            pnl_str = f"+${abs(pnl_estimate):,.0f}" if user_won else f"-${abs(pnl_estimate):,.0f}"
+            emoji   = "✅" if user_won else "❌"
+            title   = (f.get('market_title') or market_id)[:60]
+
+            subject = f"{emoji} Market Resolved: You {'won' if user_won else 'lost'} {pnl_str} (Mock)"
+            body_html = f"""
+            <div style="font-family:Inter,sans-serif;background:#0d1117;color:#e6edf3;padding:32px;border-radius:16px;max-width:560px">
+              <h2 style="color:{'#00ffa3' if user_won else '#ff4d6d'}">{emoji} Market Resolved</h2>
+              <p style="font-size:18px;font-weight:700;margin:12px 0">"{title}"</p>
+              <p>Resolved: <strong style="color:{'#00ffa3' if winner=='YES' else '#ff4d6d'}">{winner}</strong></p>
+              <p>Your position: <strong>{f.get('outcome','?')}</strong></p>
+              <p style="font-size:22px;font-weight:800;color:{'#00ffa3' if user_won else '#ff4d6d'}">{pnl_str} mock P&L</p>
+              <hr style="border:1px solid rgba(255,255,255,0.08);margin:20px 0"/>
+              <p style="font-size:12px;color:#8b949e">This is a mock portfolio — no real money involved. <a href="https://polyvision.pages.dev/app" style="color:#00ffa3">View your portfolio →</a></p>
+            </div>"""
+
+            # Email via Resend
+            if RESEND_API_KEY and f.get('email'):
+                try:
+                    requests.post(
+                        'https://api.resend.com/emails',
+                        headers={'Authorization': f'Bearer {RESEND_API_KEY}', 'Content-Type': 'application/json'},
+                        json={
+                            'from': RESEND_FROM,
+                            'to': [f['email']],
+                            'subject': subject,
+                            'html': body_html,
+                        },
+                        timeout=10,
+                    )
+                    log.info(f'Resolution email sent to {f["email"][:20]}')
+                except Exception as e:
+                    log.warning(f'Resolution email failed: {e}')
+
+            # Push via OneSignal (if notifier has it)
+            if send_onesignal and f.get('clerk_user_id'):
+                try:
+                    send_onesignal(subject, f'Market: "{title[:40]}"', tags={'clerk_user_id': f['clerk_user_id']})
+                except Exception as e:
+                    log.warning(f'Push alert failed: {e}')
+
+    except Exception as e:
+        log.warning(f'_send_resolution_alerts failed for market {market_id[:20]}: {e}')
+
+
 def _recalculate_all_win_rates(conn) -> int:
     """
     Recalculates win_rate, winning_trades, losing_trades for ALL wallets
     based on their resolved trades. Only counts resolved trades.
     Returns the number of wallets updated.
     """
+
     with conn.cursor() as cur:
         cur.execute("""
             UPDATE wallets w

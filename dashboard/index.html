@@ -19,6 +19,22 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="PolyVision" />
+    <!-- Sentry Error Monitoring -->
+    <script
+      src="https://js.sentry-cdn.com/SENTRY_DSN_PLACEHOLDER.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      // Replace SENTRY_DSN_PLACEHOLDER with your Sentry project key
+      // Get from: Sentry dashboard → Settings → Projects → Client Keys (DSN)
+      if (window.Sentry && typeof Sentry.init === 'function') {
+        Sentry.init({
+          release: 'polyvision@1.0.0',
+          environment: 'production',
+          tracesSampleRate: 0.1,
+        });
+      }
+    </script>
     <!-- OneSignal Web Push SDK -->
     <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
 

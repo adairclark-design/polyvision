@@ -116,33 +116,71 @@ const modalContent = $('modalContent');
 const toastContainer = $('toastContainer');
 const btnHudUpgrade = $('btnHudUpgrade');
 
+// ── PRO Subscription Status ───────────────────────────────────────────────────
+// Cached after first fetch; reloaded on every page load.
 window.isPro = function () {
-  return window.Clerk && window.Clerk.user && window.Clerk.user.publicMetadata && window.Clerk.user.publicMetadata.tier === 'PRO';
+  // Fast path: use cached value loaded on init
+  if (state.isProUser !== undefined) return state.isProUser;
+  // Fallback: check Clerk publicMetadata (set manually for grandfathered users)
+  return !!(window.Clerk?.user?.publicMetadata?.tier === 'PRO');
 };
 
-window.checkoutPro = function () {
-  // Open the polished PRO upgrade modal instead of a bare redirect
+async function loadProStatus() {
+  const user = window.Clerk?.user;
+  if (!user) { state.isProUser = false; return; }
+  try {
+    const resp = await fetch(`${BRAIN_URL}/subscription/status?clerk_user_id=${encodeURIComponent(user.id)}`,
+      { signal: AbortSignal.timeout(8000) });
+    if (resp.ok) {
+      const data = await resp.json();
+      state.isProUser = data.is_pro === true;
+      // Show welcome toast if returning from Stripe
+      const params = new URLSearchParams(location.search);
+      if (params.get('upgrade') === 'success' && state.isProUser) {
+        history.replaceState({}, '', location.pathname);
+        showToast({ tier: 'WHALE', whale: { handle: '🎉 Welcome to PolyVision PRO!' },
+          market: 'All PRO features are now unlocked. Your feed just expanded to 50 events.',
+          outcome: 'YES', usdValue: 0, timestamp: Date.now() });
+      }
+    }
+  } catch (_) {
+    // Brain offline — fall back to Clerk metadata
+    state.isProUser = !!(window.Clerk?.user?.publicMetadata?.tier === 'PRO');
+  }
+}
+
+window.checkoutPro = async function () {
+  // Show the upgrade modal first
   $('proUpgradeOverlay').style.display = 'flex';
+};
+
+window.startStripeCheckout = async function () {
+  const user = window.Clerk?.user;
+  if (!user) { alert('Please sign in first.'); return; }
+  const email = user.primaryEmailAddress?.emailAddress || '';
+  try {
+    const resp = await fetch(`${BRAIN_URL}/checkout/create-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clerk_user_id: user.id, email }),
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    const { url } = await resp.json();
+    window.location.href = url;
+  } catch (err) {
+    console.error('Checkout error:', err);
+    alert('Could not start checkout. Please try again.');
+  }
 };
 
 window.closeProModal = function () {
   $('proUpgradeOverlay').style.display = 'none';
 };
 
-// Wire the "Go PRO" button inside the modal to do the Stripe redirect
+// Wire the "Go PRO" button inside the modal to the new checkout flow
 document.addEventListener('DOMContentLoaded', () => {
   const stripeBtn = $('btnGoStripe');
-  if (stripeBtn) {
-    stripeBtn.onclick = () => {
-      if (!window.Clerk || !window.Clerk.user) {
-        alert('Please sign in first.');
-        return;
-      }
-      const userId = window.Clerk.user.id;
-      const stripeUrl = 'https://buy.stripe.com/9B66oH5b17Nn4Qgc9d0sU00';
-      window.location.href = `${stripeUrl}?client_reference_id=${userId}`;
-    };
-  }
+  if (stripeBtn) stripeBtn.onclick = window.startStripeCheckout;
 });
 
 
@@ -1078,6 +1116,14 @@ window.openTradeModal = function (eventId) {
           <div class="modal-stat-label">Specialty</div>
           <div class="modal-stat-value" style="font-size:11px;margin-top:4px">${whale.dominantCategory}</div>
         </div>
+        <div class="modal-stat">
+          <div class="modal-stat-label">Avg Price Impact</div>
+          <div class="modal-stat-value" style="color:${whale.avg_price_impact > 0 ? 'var(--mint)' : whale.avg_price_impact < 0 ? 'var(--rose)' : 'var(--text-muted)'}">
+            ${whale.avg_price_impact != null
+              ? (whale.avg_price_impact >= 0 ? '+' : '') + (whale.avg_price_impact * 100).toFixed(1) + '% 24h'
+              : '— pending'}
+          </div>
+        </div>
       </div>
 
       <!-- ── Recent Positions ── -->
@@ -1532,8 +1578,12 @@ function initApp() {
   // Connect to the Live Backend WebSocket Pipeline
   connectLiveFeed();
 
+  // Load real PRO subscription status from backend
+  loadProStatus();
+
   startPaperPortfolioPolling();
   initLeaderboardTabs();
+
 
   // ── Shareable whale URL: ?whale=0xABC ───────────────────────────────────
   const params      = new URLSearchParams(location.search);

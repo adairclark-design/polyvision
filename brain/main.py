@@ -25,6 +25,9 @@ import psycopg2
 import psycopg2.extras
 import httpx
 import stripe
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -52,6 +55,14 @@ from market_resolver  import (
     init_db        as init_resolver_db,
     run_resolution_pass,
 )
+from subscriptions import (
+    init_db        as init_subscriptions_db,
+    is_pro, get_subscription, upsert_subscription, cancel_subscription,
+)
+from price_tracker import (
+    init_db        as init_price_tracker_db,
+    run_price_tracker_pass,
+)
 
 load_dotenv()
 
@@ -65,10 +76,22 @@ BRIEFING_HOUR  = int(os.getenv('BRIEFING_HOUR_EST', '8'))  # 8 = 08:00 AM EST
 
 STRIPE_API_KEY        = os.getenv('STRIPE_API_KEY', '')
 STRIPE_WEBHOOK_SECRET = os.getenv('STRIPE_WEBHOOK_SECRET', '')
+STRIPE_PRICE_ID       = os.getenv('STRIPE_PRICE_ID', '')     # price_1ABC... from Stripe dashboard
 CLERK_SECRET_KEY      = os.getenv('CLERK_SECRET_KEY', '')
+SENTRY_DSN            = os.getenv('SENTRY_DSN', '')
 
 if STRIPE_API_KEY:
     stripe.api_key = STRIPE_API_KEY
+
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[FastApiIntegration(), StarletteIntegration()],
+        traces_sample_rate=0.1,
+        environment=os.getenv('RAILWAY_ENVIRONMENT', 'development'),
+        release='polyvision@1.0.0',
+    )
+    log.info('Sentry initialized.')
 
 os.makedirs('.tmp', exist_ok=True)
 logging.basicConfig(
@@ -93,6 +116,8 @@ async def lifespan(app: FastAPI):
             init_db()
             init_email_alerts_db()
             init_resolver_db()
+            init_subscriptions_db()
+            init_price_tracker_db()
             log.info('PostgreSQL tables initialized.')
         except Exception as e:
             log.warning(f'DB init skipped (no connection?): {e}')
@@ -114,9 +139,18 @@ async def lifespan(app: FastAPI):
         name='Daily Market Resolution Pass (06:00 EST)',
         replace_existing=True,
     )
+    # ── Daily Price Impact Tracker (07:30 EST — checks 24h-old trades) ─────────
+    scheduler.add_job(
+        lambda: asyncio.get_event_loop().run_in_executor(None, run_price_tracker_pass),
+        trigger=CronTrigger(hour=7, minute=30, timezone='America/New_York'),
+        id='price_tracker',
+        name='Daily Price Impact Tracker (07:30 EST)',
+        replace_existing=True,
+    )
     scheduler.start()
     log.info(f'Briefing scheduler started — fires daily at {BRIEFING_HOUR:02d}:00 EST.')
     log.info('Market resolution cron scheduled — fires daily at 06:00 EST.')
+    log.info('Price impact tracker cron scheduled — fires daily at 07:30 EST.')
 
     yield
     scheduler.shutdown(wait=False)
@@ -508,6 +542,91 @@ async def ws_pulse(websocket: WebSocket):
 
 
 @app.post('/cron/recalculate-profiles')
+
+# ── Stripe Checkout & Subscription Management ────────────────────────────────
+
+class CheckoutRequest(BaseModel):
+    clerk_user_id: str
+    email:         str
+    success_url:   str = 'https://polyvision.pages.dev/app?upgrade=success'
+    cancel_url:    str = 'https://polyvision.pages.dev/app?upgrade=cancelled'
+
+@app.post('/checkout/create-session')
+async def create_checkout_session(body: CheckoutRequest):
+    """Create a Stripe Checkout Session for PolyVision PRO."""
+    if not STRIPE_API_KEY or not STRIPE_PRICE_ID:
+        raise HTTPException(503, 'Stripe not configured — set STRIPE_API_KEY and STRIPE_PRICE_ID.')
+    try:
+        session = stripe.checkout.Session.create(
+            payment_method_types=['card'],
+            mode='subscription',
+            line_items=[{'price': STRIPE_PRICE_ID, 'quantity': 1}],
+            customer_email=body.email,
+            client_reference_id=body.clerk_user_id,   # used in webhook to link sub → user
+            success_url=body.success_url + '&session_id={CHECKOUT_SESSION_ID}',
+            cancel_url=body.cancel_url,
+            metadata={'clerk_user_id': body.clerk_user_id},
+        )
+        return {'url': session.url, 'session_id': session.id}
+    except stripe.error.StripeError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post('/stripe/webhook')
+async def stripe_webhook(request: Request):
+    """Stripe webhook — handles subscription lifecycle events."""
+    payload   = await request.body()
+    sig       = request.headers.get('stripe-signature', '')
+    try:
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+    except stripe.error.SignatureVerificationError:
+        raise HTTPException(400, 'Invalid Stripe signature')
+    except ValueError:
+        raise HTTPException(400, 'Invalid payload')
+
+    etype = event['type']
+    data  = event['data']['object']
+
+    if etype == 'checkout.session.completed':
+        clerk_user_id = data.get('metadata', {}).get('clerk_user_id') or data.get('client_reference_id', '')
+        if clerk_user_id:
+            # Retrieve full subscription to get period_end
+            sub = stripe.Subscription.retrieve(data['subscription'])
+            upsert_subscription(
+                clerk_user_id=clerk_user_id,
+                stripe_customer_id=data['customer'],
+                stripe_sub_id=data['subscription'],
+                status='active',
+                period_end_ts=sub['current_period_end'],
+            )
+            log.info(f'PRO activated for clerk user: {clerk_user_id}')
+
+    elif etype in ('customer.subscription.deleted', 'customer.subscription.updated'):
+        sub    = data
+        status = sub['status']   # 'active','past_due','cancelled','unpaid'
+        upsert_subscription(
+            clerk_user_id=sub.get('metadata', {}).get('clerk_user_id', ''),
+            stripe_customer_id=sub['customer'],
+            stripe_sub_id=sub['id'],
+            status=status,
+            period_end_ts=sub.get('current_period_end'),
+        )
+
+    elif etype == 'invoice.payment_failed':
+        cancel_subscription(data['customer'])
+        log.warning(f'Payment failed — downgraded customer: {data["customer"]}')
+
+    return {'received': True}
+
+
+@app.get('/subscription/status')
+async def subscription_status(clerk_user_id: str):
+    """Return PRO status for a Clerk user — called by the dashboard on load."""
+    if not clerk_user_id:
+        raise HTTPException(400, 'clerk_user_id required')
+    return get_subscription(clerk_user_id)
+
+
 async def recalculate_profiles():
     """
     Called by the 03:00 UTC cron job (see deploy/cron_jobs.yml).
