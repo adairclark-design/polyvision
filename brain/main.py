@@ -595,16 +595,19 @@ async def stripe_webhook(request: Request):
     if etype == 'checkout.session.completed':
         clerk_user_id = data.get('metadata', {}).get('clerk_user_id') or data.get('client_reference_id', '')
         if clerk_user_id:
-            # Retrieve full subscription to get period_end
-            sub = stripe.Subscription.retrieve(data['subscription'])
-            upsert_subscription(
-                clerk_user_id=clerk_user_id,
-                stripe_customer_id=data['customer'],
-                stripe_sub_id=data['subscription'],
-                status='active',
-                period_end_ts=sub['current_period_end'],
-            )
-            log.info(f'PRO activated for clerk user: {clerk_user_id}')
+            try:
+                sub = stripe.Subscription.retrieve(data['subscription'])
+                period_end = sub.get('current_period_end') or sub.get('items', {}).get('data', [{}])[0].get('current_period_end')
+                upsert_subscription(
+                    clerk_user_id=clerk_user_id,
+                    stripe_customer_id=data['customer'],
+                    stripe_sub_id=data['subscription'],
+                    status='active',
+                    period_end_ts=period_end,
+                )
+                log.info(f'PRO activated for clerk user: {clerk_user_id}')
+            except Exception as e:
+                log.error(f'Failed to upsert subscription for {clerk_user_id}: {e}')
 
     elif etype in ('customer.subscription.deleted', 'customer.subscription.updated'):
         sub    = data
