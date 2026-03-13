@@ -1085,7 +1085,7 @@ window.openTradeModal = function (eventId) {
       ${recentHtml}
 
       <!-- ── Actions ── -->
-      <div style="display:flex; gap:8px; margin-top:18px">
+      <div style="display:flex; gap:8px; margin-top:18px; flex-wrap:wrap">
         <button class="btn-mock-follow btn-card ${following ? 'following' : ''}"
                 id="modal-follow-${eventId}"
                 onclick="toggleFollow('${eventId}', event)">
@@ -1093,6 +1093,9 @@ window.openTradeModal = function (eventId) {
         </button>
         <button class="btn-profile btn-card" onclick="openWhaleModal('${whale.id}', event)">
           Full Profile →
+        </button>
+        <button class="btn-profile btn-card" style="background:var(--bg-secondary)" onclick="shareWhaleProfile('${whale.wallet}', event)">
+          🔗 Share
         </button>
       </div>
 
@@ -1104,7 +1107,38 @@ window.openTradeModal = function (eventId) {
   modalOverlay.classList.add('open');
 };
 
-// ── Filter Controls ────────────────────────────────────────────────────────────
+// ── Shareable Whale Profile URL ───────────────────────────────────────────────
+window.shareWhaleProfile = function (walletAddress, e) {
+  if (e) e.stopPropagation();
+  if (!walletAddress) return;
+  const url = `${location.origin}${location.pathname}?whale=${encodeURIComponent(walletAddress)}`;
+  navigator.clipboard.writeText(url).then(() => {
+    showToast({ tier: 'INFO', whale: { handle: '🔗 Link copied!' }, market: 'Shareable whale profile URL copied to clipboard.', outcome: 'OK', usdValue: 0, timestamp: Date.now() });
+  }).catch(() => {
+    prompt('Copy this link:', url);
+  });
+};
+
+// ── Market Watchlist ───────────────────────────────────────────────────────────
+const WATCHLIST_KEY = 'pv_market_watchlist';
+
+function loadWatchlist() {
+  try { return new Set(JSON.parse(localStorage.getItem(WATCHLIST_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function saveWatchlist(set) {
+  localStorage.setItem(WATCHLIST_KEY, JSON.stringify([...set]));
+}
+
+window.toggleMarketWatch = function(marketTitle) {
+  const wl = loadWatchlist();
+  if (wl.has(marketTitle)) { wl.delete(marketTitle); }
+  else { wl.add(marketTitle); }
+  saveWatchlist(wl);
+  renderMarkets();  // re-render to update star state
+};
+
+// Filter Controls
 document.querySelectorAll('#filterPills .pill').forEach(pill => {
   pill.onclick = () => {
     document.querySelectorAll('#filterPills .pill').forEach(p => p.classList.remove('active'));
@@ -1252,6 +1286,7 @@ const MARKET_CATEGORIES = [
   { id: 'sports',   label: '🏆 Sports',    keywords: ['nba','nfl','nhl','mlb','ufc','soccer','football','basketball','baseball','tennis','golf','f1','racing','championship','playoffs','super bowl','world cup','league'] },
   { id: 'crypto',   label: '₿ Crypto',   keywords: ['bitcoin','btc','eth','ethereum','crypto','sol','solana','doge','xrp','coinbase','binance','defi','nft','blockchain','usdc','tether','fed rate','interest rate','inflation','fomc'] },
   { id: 'world',    label: '🌍 World',    keywords: ['war','ukraine','russia','china','taiwan','israel','france','germany','japan','india','iran','middle east','ceasefire','sanctions'] },
+  { id: 'watched',  label: '⭐ Saved',   keywords: [] },
 ];
 
 let activeCategoryFilter = 'all';
@@ -1300,7 +1335,10 @@ function renderMarkets() {
 
   // ── Filter + sort ──────────────────────────────────────────────────────────
   let filtered = marketsData;
-  if (activeCategoryFilter !== 'all') {
+  if (activeCategoryFilter === 'watched') {
+    const wl = loadWatchlist();
+    filtered = marketsData.filter(m => wl.has(m.question));
+  } else if (activeCategoryFilter !== 'all') {
     filtered = marketsData.filter(m => categorizeMarket(m.question) === activeCategoryFilter);
   }
   const sorted = [...filtered].sort((a, b) => {
@@ -1323,6 +1361,9 @@ function renderMarkets() {
     const isHot   = vol24h > 50000;
     const cat     = MARKET_CATEGORIES.find(c => c.id === categorizeMarket(title));
     const catEmoji = cat ? cat.label.split(' ')[0] : '🌍';
+    const isWatched = loadWatchlist().has(title);
+    const starBtn   = `<button class="mc-star-btn ${isWatched ? 'watched' : ''}" onclick="toggleMarketWatch('${title.replace(/'/g, "&#39;")}')"
+      title="${isWatched ? 'Remove from watchlist' : 'Add to watchlist'}">${isWatched ? '⭐' : '☆'}</button>`;
 
     // Whale Consensus Badge
     const consensus = getWhaleConsensus(title);
@@ -1340,6 +1381,7 @@ function renderMarkets() {
       <div class="mc-top">
         <div class="mc-title">${title}</div>
         <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+          ${starBtn}
           <span class="mc-category-badge">${catEmoji}</span>
           ${isHot ? '<span class="mc-hot-badge">🔥 HOT</span>' : ''}
         </div>
@@ -1422,6 +1464,44 @@ async function loadTopMarkets() {
   grid.innerHTML = `<div class="lb-loading">⚠️ Could not load markets. Check your internet connection.</div>`;
 }
 
+// ── CSV Export for Mock Portfolio ──────────────────────────────────────────────────
+window.exportPortfolioCSV = async function() {
+  try {
+    const resp = await fetch(`${BRAIN_URL}/paper/portfolio`, { signal: AbortSignal.timeout(12000) });
+    const data = await resp.json();
+    const trades = data.trades || [];
+
+    if (!trades.length) {
+      showToast({ tier: 'INFO', whale: { handle: '⚠️ No trades to export' }, market: 'Follow some trades first!', outcome: 'INFO', usdValue: 0, timestamp: Date.now() });
+      return;
+    }
+
+    const headers = ['Trade ID','Market','Outcome','Entry Price','Invested','Current Price','P&L','ROI %','Status','Followed At'];
+    const rows = trades.map(t => [
+      t.trade_id || '',
+      '"' + (t.market_title || '').replace(/"/g, '""') + '"',
+      t.outcome || '',
+      t.entry_price ?? '',
+      t.invested ?? '',
+      t.current_price ?? '',
+      t.pnl ?? '',
+      t.roi_pct != null ? (t.roi_pct * 100).toFixed(2) + '%' : '',
+      t.status || '',
+      t.created_at ? new Date(t.created_at).toLocaleString() : '',
+    ].join(','));
+
+    const csv  = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href  = URL.createObjectURL(blob);
+    link.download = `polyvision-portfolio-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  } catch (e) {
+    showToast({ tier: 'INFO', whale: { handle: '❌ Export failed' }, market: 'Could not reach the Brain. Try again.', outcome: 'INFO', usdValue: 0, timestamp: Date.now() });
+  }
+};
+
 
 // ── Startup (Clerk Auth Wrapper) ─────────────────────────────────────────────
 async function initAuth() {
@@ -1454,6 +1534,24 @@ function initApp() {
 
   startPaperPortfolioPolling();
   initLeaderboardTabs();
+
+  // ── Shareable whale URL: ?whale=0xABC ───────────────────────────────────
+  const params      = new URLSearchParams(location.search);
+  const targetWallet = params.get('whale');
+  if (targetWallet) {
+    // Wait for live feed to populate, then find and highlight that whale
+    setTimeout(() => {
+      const ev = state.events.find(e => e.whale?.wallet?.toLowerCase() === targetWallet.toLowerCase());
+      if (ev) {
+        openTradeModal(ev.id);
+      } else {
+        // Wallet not in feed yet — show toast explaining
+        showToast({ tier: 'INFO', whale: { handle: '🔍 Whale not in feed' }, market: `No recent trades from ${targetWallet.slice(0, 10)}… — they may have traded outside the current feed window.`, outcome: 'INFO', usdValue: 0, timestamp: Date.now() });
+      }
+    }, 3000); // give WS burst time to arrive
+    // Clean the URL without reload
+    history.replaceState({}, '', location.pathname);
+  }
 }
 
 window.addEventListener('load', () => {
@@ -1473,6 +1571,11 @@ window.addEventListener('load', () => {
       initApp();
     }
   }, 5000);
+
+  // ── PWA Service Worker Registration ────────────────────────────────────
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
 });
 
 // ── Alpha Leaderboard ─────────────────────────────────────────────────────────

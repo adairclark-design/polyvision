@@ -1,0 +1,33 @@
+{
+  "name": "PolyVision — Whale Intelligence Platform",
+  "short_name": "PolyVision",
+  "description": "Real-time $500K+ Polymarket whale trade tracking. Follow smart money, get email alerts, stay ahead of the market.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0d1117",
+  "theme_color": "#00ffa3",
+  "categories": ["finance", "utilities"],
+  "lang": "en",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230d1117'/><text y='.9em' font-size='80' x='10'>🐋</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "The Pulse",
+      "url": "/#pulse",
+      "description": "Live whale trade feed"
+    },
+    {
+      "name": "Top Markets",
+      "url": "/#markets",
+      "description": "Browse top Polymarket markets"
+    }
+  ]
+}
