@@ -2591,3 +2591,81 @@ button {
     font-size: 12px;
     color: var(--text-muted);
 }
+
+/* ── WALLET SEARCH BAR ────────────────────────────────────────────────────────── */
+.wallet-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-full);
+    padding: 5px 8px 5px 12px;
+    transition: border-color 0.2s;
+    max-width: 380px;
+    width: 100%;
+}
+
+.wallet-search-wrap:focus-within {
+    border-color: var(--mint);
+}
+
+.ws-icon {
+    color: var(--text-muted);
+    font-size: 13px;
+    flex-shrink: 0;
+}
+
+.wallet-search-input {
+    flex: 1;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: var(--text-sans);
+    min-width: 0;
+}
+
+.wallet-search-input::placeholder {
+    color: var(--text-muted);
+}
+
+.wallet-search-btn {
+    background: var(--mint);
+    color: var(--bg-base);
+    border: none;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 12px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: opacity 0.2s;
+}
+
+.wallet-search-btn:hover { opacity: 0.85; }
+
+/* ── PRO MODAL FEATURES GRID ──────────────────────────────────────────────────── */
+.pro-features-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 4px;
+    text-align: left;
+}
+
+.pro-feature-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+@media (max-width: 480px) {
+    .pro-features-grid { grid-template-columns: 1fr; }
+    .wallet-search-wrap { display: none; } /* hide on very small screens */
+}

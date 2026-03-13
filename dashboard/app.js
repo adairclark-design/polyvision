@@ -121,15 +121,31 @@ window.isPro = function () {
 };
 
 window.checkoutPro = function () {
-  if (!window.Clerk || !window.Clerk.user) {
-    alert("Please sign in first.");
-    return;
-  }
-  const userId = window.Clerk.user.id;
-  // Live Stripe Payment Link for PolyVision PRO
-  const stripeUrl = "https://buy.stripe.com/9B66oH5b17Nn4Qgc9d0sU00";
-  window.location.href = `${stripeUrl}?client_reference_id=${userId}`;
+  // Open the polished PRO upgrade modal instead of a bare redirect
+  $('proUpgradeOverlay').style.display = 'flex';
 };
+
+window.closeProModal = function () {
+  $('proUpgradeOverlay').style.display = 'none';
+};
+
+// Wire the "Go PRO" button inside the modal to do the Stripe redirect
+document.addEventListener('DOMContentLoaded', () => {
+  const stripeBtn = $('btnGoStripe');
+  if (stripeBtn) {
+    stripeBtn.onclick = () => {
+      if (!window.Clerk || !window.Clerk.user) {
+        alert('Please sign in first.');
+        return;
+      }
+      const userId = window.Clerk.user.id;
+      const stripeUrl = 'https://buy.stripe.com/9B66oH5b17Nn4Qgc9d0sU00';
+      window.location.href = `${stripeUrl}?client_reference_id=${userId}`;
+    };
+  }
+});
+
+
 
 if (btnHudUpgrade) {
   btnHudUpgrade.onclick = window.checkoutPro;
@@ -1279,28 +1295,65 @@ function initLeaderboardTabs() {
 
 async function fetchLeaderboard(forceRefresh = false) {
   const lbLoading = $('lbLoading');
-  const lbRows = $('lbRows');
+  const lbRows    = $('lbRows');
 
   if (lbLoading) lbLoading.style.display = 'block';
-  if (lbRows) lbRows.innerHTML = '';
+  if (lbRows)    lbRows.innerHTML = '';
 
+  // Try Railway brain first (has richer data)
   try {
-    const url = `${BRAIN_URL}/leaderboard?limit=100${forceRefresh ? '&refresh=true' : ''}`;
-    const resp = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    const url  = `${BRAIN_URL}/leaderboard?limit=100${forceRefresh ? '&refresh=true' : ''}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(6000) });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
     renderGlobalLeaderboard(data.traders || []);
     lbLoaded = true;
+    if (lbLoading) lbLoading.style.display = 'none';
+    return;
+  } catch (_) {
+    // Railway unavailable — fall back to public Polymarket API
+  }
+
+  // Fallback: Polymarket public leaderboard API (no backend needed)
+  try {
+    const resp = await fetch(
+      'https://data-api.polymarket.com/v1/leaderboard?category=OVERALL&timePeriod=ALL&orderBy=PNL&limit=100',
+      { signal: AbortSignal.timeout(10000) }
+    );
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const rows = await resp.json();
+
+    // Map Polymarket API shape → renderGlobalLeaderboard format
+    const traders = (Array.isArray(rows) ? rows : []).map((t, i) => ({
+      rank:        i + 1,
+      wallet:      t.proxyWallet || '',
+      handle:      t.userName || t.name || `Trader 0x…${(t.proxyWallet || '').slice(-6).toUpperCase()}`,
+      win_rate:    null,  // not in public API
+      pnl:         parseFloat(t.pnl || 0),
+      trades:      null,
+    }));
+
+    renderGlobalLeaderboard(traders);
+    lbLoaded = true;
+
+    // Show a small "via public API" note
+    if (lbRows) {
+      const note = document.createElement('div');
+      note.style.cssText = 'text-align:center;font-size:10px;color:var(--text-muted);padding:8px;';
+      note.textContent = '📡 Data from Polymarket public API';
+      lbRows.appendChild(note);
+    }
   } catch (err) {
     if (lbRows) lbRows.innerHTML = `
-            <div class="lb-loading">
-                ⚠️ Could not load leaderboard.<br>
-                <small>Brain may be starting up. Try refreshing in a moment.</small>
-            </div>`;
+      <div class="lb-loading">
+        ⚠️ Could not load leaderboard.<br>
+        <small>Check your internet connection and try again.</small>
+      </div>`;
   } finally {
     if (lbLoading) lbLoading.style.display = 'none';
   }
 }
+
 
 function renderGlobalLeaderboard(traders) {
   const lbRows = $('lbRows');
@@ -1887,7 +1940,141 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+// ── Wallet Search ─────────────────────────────────────────────────────────────
+window.closeWalletSearch = function () {
+  $('walletSearchOverlay').style.display = 'none';
+  $('walletSearchInput').value = '';
+};
+
+async function runWalletSearch(query) {
+  const q = (query || '').trim();
+  if (!q) return;
+
+  const overlay  = $('walletSearchOverlay');
+  const content  = $('walletSearchContent');
+  overlay.style.display = 'flex';
+  content.innerHTML = `<div style="text-align:center;padding:40px 0;color:var(--text-muted)">
+    <div style="font-size:28px">⏳</div>
+    <div style="margin-top:8px">Looking up <strong>${q.slice(0, 30)}${q.length > 30 ? '…' : ''}</strong>…</div>
+  </div>`;
+
+  // Determine if it looks like a wallet address (0x…) or a username
+  const isWallet = q.startsWith('0x') && q.length >= 10;
+
+  try {
+    let profile = null;
+
+    if (isWallet) {
+      // ── Lookup by wallet address via Polymarket API ──
+      const [xrayResp, pfResp] = await Promise.allSettled([
+        fetch(`https://data-api.polymarket.com/v1/leaderboard?category=OVERALL&timePeriod=ALL&orderBy=PNL&proxyWallet=${q.toLowerCase()}&limit=1`),
+        fetch(`https://gamma-api.polymarket.com/profiles?wallet=${q.toLowerCase()}`),
+      ]);
+
+      const xray = xrayResp.status === 'fulfilled' && xrayResp.value.ok
+        ? (await xrayResp.value.json())[0] : null;
+      const pf = pfResp.status === 'fulfilled' && pfResp.value.ok
+        ? await pfResp.value.json() : null;
+
+      if (!xray && !pf) throw new Error('not_found');
+
+      profile = {
+        wallet:   q,
+        handle:   pf?.username || pf?.name || xray?.userName || `0x${q.slice(2, 8)}…`,
+        pnl:      parseFloat(xray?.pnl || 0),
+        winRate:  xray?.winRate ? parseFloat(xray.winRate) : null,
+        volume:   parseFloat(xray?.volume || 0),
+        trades:   xray?.numTrades || null,
+        bio:      pf?.bio || null,
+      };
+    } else {
+      // ── Lookup by username via Gamma profile API ──
+      const resp = await fetch(`https://gamma-api.polymarket.com/profiles?username=${encodeURIComponent(q)}`);
+      if (!resp.ok) throw new Error('not_found');
+      const data = await resp.json();
+      const pf = Array.isArray(data) ? data[0] : data;
+      if (!pf?.proxyWallet) throw new Error('not_found');
+
+      // Get stats via leaderboard
+      const statsResp = await fetch(
+        `https://data-api.polymarket.com/v1/leaderboard?category=OVERALL&timePeriod=ALL&proxyWallet=${pf.proxyWallet}&limit=1`
+      );
+      const stats = statsResp.ok ? (await statsResp.json())[0] : null;
+
+      profile = {
+        wallet:   pf.proxyWallet,
+        handle:   pf.username || pf.name || q,
+        pnl:      parseFloat(stats?.pnl || 0),
+        winRate:  stats?.winRate ? parseFloat(stats.winRate) : null,
+        volume:   parseFloat(stats?.volume || 0),
+        trades:   stats?.numTrades || null,
+        bio:      pf.bio || null,
+      };
+    }
+
+    // Render the result
+    const wr  = profile.winRate !== null
+      ? `<span style="color:var(--mint);font-weight:700">${(profile.winRate * 100).toFixed(1)}%</span>`
+      : '<span style="color:var(--text-muted)">N/A</span>';
+    const pnlColor = profile.pnl >= 0 ? 'var(--mint)' : 'var(--rose)';
+    const shortW = profile.wallet ? `${profile.wallet.slice(0,6)}…${profile.wallet.slice(-4)}` : '';
+
+    content.innerHTML = `
+      <div style="padding:8px 0">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+          <div style="width:44px;height:44px;border-radius:50%;background:var(--bg-card);display:flex;align-items:center;justify-content:center;font-size:22px;border:2px solid var(--border)">🐋</div>
+          <div>
+            <div style="font-size:18px;font-weight:800;color:var(--text-primary)">${profile.handle}</div>
+            <div style="font-size:11px;color:var(--text-muted);font-family:var(--text-mono)">${shortW}</div>
+          </div>
+        </div>
+        ${profile.bio ? `<p style="color:var(--text-muted);font-size:13px;margin:0 0 16px;line-height:1.5">${profile.bio}</p>` : ''}
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;text-align:center">
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.6px">Total P&amp;L</div>
+            <div style="font-size:16px;font-weight:700;color:${pnlColor}">${profile.pnl >= 0 ? '+' : ''}$${Math.abs(profile.pnl).toLocaleString('en-US',{maximumFractionDigits:0})}</div>
+          </div>
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;text-align:center">
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.6px">Win Rate</div>
+            <div style="font-size:16px;font-weight:700">${wr}</div>
+          </div>
+          <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;text-align:center">
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.6px">Trades</div>
+            <div style="font-size:16px;font-weight:700;color:var(--text-primary)">${profile.trades ?? '—'}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-card btn-mock-follow" style="flex:1"
+            onclick="window.open('https://polymarket.com/profile/${profile.wallet}','_blank')">
+            🔗 View on Polymarket
+          </button>
+        </div>
+      </div>`;
+
+  } catch (err) {
+    content.innerHTML = `
+      <div style="text-align:center;padding:32px 0;color:var(--text-muted)">
+        <div style="font-size:32px">🤷</div>
+        <div style="margin-top:8px;font-weight:700;color:var(--text-primary)">Whale not found</div>
+        <div style="margin-top:4px;font-size:13px">Try a full wallet address (0x…) or exact Polymarket username.</div>
+      </div>`;
+  }
+}
+
+// Wire search input + button on DOM ready
+document.addEventListener('DOMContentLoaded', () => {
+  const input = $('walletSearchInput');
+  const btn   = $('walletSearchBtn');
+  if (!input || !btn) return;
+
+  btn.onclick = () => runWalletSearch(input.value);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') runWalletSearch(input.value);
+  });
+});
+
 // ── Custom Alerts System ──────────────────────────────────────────────────────
+
 const ALERTS_KEY = 'pv_alert_rules';
 
 function loadAlertRules() {

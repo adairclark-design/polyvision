@@ -57,6 +57,16 @@
                 <span class="live-label">LIVE</span>
                 <span class="live-count" id="liveCount">0 signals today</span>
             </div>
+            <!-- Wallet Search -->
+            <div class="wallet-search-wrap" id="walletSearchWrap">
+                <span class="ws-icon">🔍</span>
+                <input class="wallet-search-input" id="walletSearchInput"
+                    type="text"
+                    placeholder="Search wallet address or handle…"
+                    autocomplete="off"
+                    spellcheck="false" />
+                <button class="wallet-search-btn" id="walletSearchBtn">Search</button>
+            </div>
         </div>
         <div class="topbar-right">
             <div class="market-stat" id="totalVolumeStat">
@@ -422,8 +432,48 @@
         </div>
     </div>
 
+    <!-- ── WALLET SEARCH RESULT MODAL ──────────────────────────────────────────── -->
+    <div class="modal-overlay" id="walletSearchOverlay" style="display:none" onclick="if(event.target===this)closeWalletSearch()">
+        <div class="modal" id="walletSearchModal" style="max-width:520px;width:92%">
+            <button class="modal-close" id="walletSearchClose" onclick="closeWalletSearch()">✕</button>
+            <div class="modal-content" id="walletSearchContent" style="padding:24px">
+                <div style="text-align:center;padding:40px 0;color:var(--text-muted)">
+                    <div style="font-size:36px">🔍</div>
+                    <div style="margin-top:8px">Enter a wallet address or handle above to look up a whale.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── PRO UPGRADE MODAL ──────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="proUpgradeOverlay" style="display:none" onclick="if(event.target===this)closeProModal()">
+        <div class="modal" id="proModal" style="max-width:480px;width:92%;text-align:center">
+            <button class="modal-close" id="proUpgradeClose" onclick="closeProModal()">✕</button>
+            <div style="padding:32px 24px">
+                <div style="font-size:48px;margin-bottom:12px">🏆</div>
+                <h2 style="font-size:22px;font-weight:800;color:var(--text-primary);margin:0 0 8px">Unlock PolyVision PRO</h2>
+                <p style="color:var(--text-muted);font-size:14px;margin:0 0 24px">Get ahead of the market with full Smart Money intel.</p>
+                <div class="pro-features-grid">
+                    <div class="pro-feature-item">✅ Full Whale Leaderboard (50+ tracked)</div>
+                    <div class="pro-feature-item">✅ Unlimited Mock Portfolio trades</div>
+                    <div class="pro-feature-item">✅ Custom Alert Rules + Push Notifications</div>
+                    <div class="pro-feature-item">✅ Morning AI Alpha Briefing (daily)</div>
+                    <div class="pro-feature-item">✅ Whale X-Ray deep profiles</div>
+                    <div class="pro-feature-item">✅ All future PRO features</div>
+                </div>
+                <div style="margin:24px 0 8px">
+                    <button class="btn-hud-upgrade" style="width:100%;padding:14px;font-size:15px;border-radius:10px" id="btnGoStripe">
+                        🔓 Unlock Real Trades — Go PRO
+                    </button>
+                </div>
+                <p style="font-size:11px;color:var(--text-muted)">Secure payment via Stripe · Cancel anytime</p>
+            </div>
+        </div>
+    </div>
+
     <!-- ── INCOMING ALERT TOAST ──────────────────────────────────────────────────── -->
     <div class="toast-container" id="toastContainer"></div>
+
 
 
     <script src="app.js?v=19"></script>
