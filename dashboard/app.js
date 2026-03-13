@@ -308,7 +308,7 @@ function buildEventCard(ev) {
       </div>
       <div class="stat">
         <span class="label">WIN RATE</span>
-        <span class="value ${ev.whale.winRate >= 0.75 ? 'positive' : 'neutral'}">${(ev.whale.winRate * 100).toFixed(0)}%</span>
+        <span class="value ${ev.whale.winRate >= 0.75 ? 'positive' : 'neutral'}">${ev.whale.winRate === 0 ? 'TBD' : (ev.whale.winRate * 100).toFixed(0) + '%'}</span>
       </div>
       <div class="conviction-bar">
         <div>
@@ -355,7 +355,7 @@ function buildWhaleCard(whale, rank) {
     <div class="whale-stats-row">
       <div class="ws">
         <span class="ws-label">Win Rate</span>
-        <span class="ws-value" style="color:var(--mint)">${(whale.winRate * 100).toFixed(0)}%</span>
+        <span class="ws-value" style="color:var(--mint)">${whale.winRate === 0 ? 'TBD' : (whale.winRate * 100).toFixed(0) + '%'}</span>
       </div>
       <div class="ws">
         <span class="ws-label">30D ROI</span>
@@ -717,7 +717,7 @@ window.openWhaleModal = function (whaleId, e) {
     <div class="modal-stats-grid">
       <div class="modal-stat">
         <div class="modal-stat-label">Win Rate</div>
-        <div class="modal-stat-value" style="color:var(--mint)">${(whale.winRate * 100).toFixed(0)}%</div>
+        <div class="modal-stat-value" style="color:var(--mint)">${whale.winRate === 0 ? 'TBD' : (whale.winRate * 100).toFixed(0) + '%'}</div>
       </div>
       <div class="modal-stat">
         <div class="modal-stat-label">30D ROI</div>
@@ -859,7 +859,7 @@ window.openTradeModal = function (eventId) {
       <div class="modal-stats-grid">
         <div class="modal-stat">
           <div class="modal-stat-label">Win Rate</div>
-          <div class="modal-stat-value" style="color:var(--mint)">${(whale.winRate * 100).toFixed(0)}%</div>
+          <div class="modal-stat-value" style="color:var(--mint)">${whale.winRate === 0 ? 'TBD' : (whale.winRate * 100).toFixed(0) + '%'}</div>
         </div>
         <div class="modal-stat">
           <div class="modal-stat-label">30D ROI</div>
@@ -1076,7 +1076,7 @@ function renderGlobalLeaderboard(traders) {
     const isTop3 = t.rank <= 3;
     const pnlPos = t.pnl >= 0;
     const pnlStr = (pnlPos ? '+$' : '-$') + Math.abs(t.pnl).toLocaleString('en-US', { maximumFractionDigits: 0 });
-    const winStr = t.win_rate !== undefined && t.win_rate !== null ? `${(t.win_rate * 100).toFixed(0)}% win` : '';
+    const winStr = t.win_rate ? `${(t.win_rate * 100).toFixed(0)}% win` : 'TBD win';
     const tradesStr = t.trades ? `${t.trades.toLocaleString()} trades` : '';
     const meta = [winStr, tradesStr].filter(Boolean).join(' · ');
     const shortWallet = t.wallet ? `${t.wallet.slice(0, 6)}…${t.wallet.slice(-4)}` : '';
@@ -1114,7 +1114,7 @@ window.openLbTraderModal = function (wallet, handle, traderData) {
             </div>
             <div class="stat-block">
                 <span class="stat-label">Win Rate</span>
-                <span class="stat-value">${trader.win_rate !== undefined && trader.win_rate !== null ? (trader.win_rate * 100).toFixed(1) + '%' : '0.0%'}</span>
+                <span class="stat-value">${t.win_rate ? (t.win_rate * 100).toFixed(1) + '%' : 'TBD'}</span>
             </div>
             <div class="stat-block">
                 <span class="stat-label">Total Trades</span>

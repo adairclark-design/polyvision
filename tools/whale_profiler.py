@@ -129,7 +129,7 @@ def upsert_wallet(conn, trade: dict) -> dict:
         if is_new_wallet:
             try:
                 # Local import to prevent circular dependencies if tools import each other
-                import tools.wallet_xray as xray
+                import brain.tools.wallet_xray as xray
                 log.info(f"New wallet detected {addr[:8]}... Triggering live historical backfill.")
                 profile_stats = xray.get_xray(addr, force_refresh=True)
 
