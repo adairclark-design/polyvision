@@ -369,30 +369,91 @@ function buildWhaleCard(whale, rank) {
   </div>`;
 }
 
-// ── Render Leaderboard ────────────────────────────────────────────────────────
+// ── Render Leaderboard (LIVE — from real WebSocket data) ─────────────────────
 function renderLeaderboard() {
+  // Aggregate live whales from state.events by wallet address
+  const walletMap = {};
+  for (const ev of state.events) {
+    const w = ev.whale;
+    if (!w || !w.wallet) continue;
+    const key = w.wallet;
+    if (!walletMap[key]) {
+      walletMap[key] = {
+        handle:      w.handle,
+        wallet:      w.wallet,
+        winRate:     w.winRate,
+        roi30d:      w.roi30d,
+        badge:       w.badge,
+        totalVolume: 0,
+        tradeCount:  0,
+        lastTrade:   ev.market,
+        sparkData:   w.sparkData || [],
+      };
+    }
+    walletMap[key].totalVolume += ev.usdValue || 0;
+    walletMap[key].tradeCount++;
+  }
+
+  const ranked = Object.values(walletMap)
+    .sort((a, b) => b.totalVolume - a.totalVolume)
+    .slice(0, window.isPro() ? 20 : 5);
+
+  if (!ranked.length) {
+    whaleCardsEl.innerHTML = `
+      <div class="empty-state" style="padding:32px 16px">
+        <span class="empty-icon">🐋</span>
+        <span>Whales appear here as they trade live. Stay tuned.</span>
+      </div>`;
+    return;
+  }
+
   const pro = window.isPro();
-  const visibleWhales = pro ? WHALES : WHALES.slice(0, 3);
+  let html = ranked.map((w, i) => {
+    const rank = i + 1;
+    const isTop = rank <= 3;
+    const vol = '$' + w.totalVolume.toLocaleString('en-US', { maximumFractionDigits: 0 });
+    const shortWallet = w.wallet ? `${w.wallet.slice(0, 6)}…${w.wallet.slice(-4)}` : '';
 
-  let html = visibleWhales.map((w, i) => buildWhaleCard(w, i + 1)).join('');
+    return `
+    <div class="whale-card" onclick="openWhaleModal(${JSON.stringify({
+      wallet: w.wallet, handle: w.handle, winRate: w.winRate, roi30d: w.roi30d
+    }).replace(/"/g, '&quot;')})">
+      <div class="whale-card-top">
+        <span class="whale-rank ${isTop ? 'top' : ''}">#${rank}</span>
+        <div class="whale-info">
+          <div class="whale-handle">${w.handle}</div>
+          <div class="whale-badge">🔥 <span>${vol} vol · ${w.tradeCount} trade${w.tradeCount > 1 ? 's' : ''}</span></div>
+        </div>
+      </div>
+      <div class="whale-stats-row">
+        <div class="ws">
+          <span class="ws-label">Win Rate</span>
+          <span class="ws-value" style="color:var(--mint)">${w.winRate === 0 ? 'TBD' : (w.winRate * 100).toFixed(0) + '%'}</span>
+        </div>
+        <div class="ws">
+          <span class="ws-label">30D ROI</span>
+          <span class="ws-value" style="color:var(--mint)">${fmtPct(w.roi30d)}</span>
+        </div>
+        <div class="ws">
+          <span class="ws-label">Badge</span>
+          <span class="ws-value">${w.badge}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 
-  if (!pro) {
+  if (!pro && Object.keys(walletMap).length > 5) {
     html += `<div class="upgrade-banner" style="margin-top:8px">
-      <h3>🔒 ${WHALES.length - 3} more whales tracked</h3>
-      <p>Upgrade to Pro to see the full Leaderboard and set custom alerts.</p>
+      <h3>🔒 ${Object.keys(walletMap).length - 5} more whales tracked</h3>
+      <p>Upgrade to Pro to see the full Leaderboard.</p>
       <button class="btn-upgrade" onclick="checkoutPro()" style="margin-top:10px;width:100%">Upgrade to Pro</button>
     </div>`;
   }
 
   whaleCardsEl.innerHTML = html;
-
-  // Draw sparklines after render
-  requestAnimationFrame(() => {
-    visibleWhales.forEach(w => {
-      drawSparkline(`spark-lb-${w.id}`, w.sparkData, w.id === 'oracle' ? '#00FFA3' : w.id === 'strategist' ? '#FF005C' : '#FFB800');
-    });
-  });
 }
+
+
 
 // ── WebSocket Ingestion (Replaces Mock Simulation) ───────────────────────────
 function connectLiveFeed() {
@@ -521,6 +582,9 @@ function renderFeed() {
   }
 
   pulseFeed.innerHTML = events.map(buildEventCard).join('');
+
+  // Keep the LIVE leaderboard in sync with new events
+  renderLeaderboard();
 }
 
 // ── Update HUD ────────────────────────────────────────────────────────────────
@@ -541,7 +605,9 @@ function updateHud() {
 function updateStats() {
   liveCount.textContent = `${state.todayCount} signals today`;
   totalVolume.textContent = fmt(state.todayVolume);
-  whaleCount.textContent = WHALES.length;
+  // Count distinct whales seen in this session
+  const activeWhaleCount = new Set(state.events.map(e => e.whale?.wallet).filter(Boolean)).size;
+  whaleCount.textContent = activeWhaleCount || '—';
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
