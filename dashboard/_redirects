@@ -1,6 +1,0 @@
-# Cloudflare Pages redirect rules
-# Landing page serves as public homepage
-# /app routes to the authenticated dashboard
-
-/app  /index.html  200
-/     /landing.html  200

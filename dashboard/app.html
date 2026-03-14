@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PolyVision — Command Center</title>
+    <meta name="description"
+        content="Real-time Smart Money signals for Polymarket. Track whale positions, copy trades, and follow the alpha." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="style.css" />
+    <!-- PWA Manifest + Meta -->
+    <link rel="manifest" href="manifest.json" />
+    <meta name="theme-color" content="#00ffa3" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="PolyVision" />
+    <!-- Sentry Error Monitoring -->
+    <script
+      src="https://js.sentry-cdn.com/4f96807e50ee85ee501a4fc97453f112.min.js"
+      crossorigin="anonymous"
+    ></script>
+    <script>
+      // Replace SENTRY_DSN_PLACEHOLDER with your Sentry project key
+      // Get from: Sentry dashboard → Settings → Projects → Client Keys (DSN)
+      if (window.Sentry && typeof Sentry.init === 'function') {
+        Sentry.init({
+          release: 'polyvision@1.0.0',
+          environment: 'production',
+          tracesSampleRate: 0.1,
+        });
+      }
+    </script>
+    <!-- OneSignal Web Push SDK -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+
+    <!-- Clerk Authentication SDK -->
+    <script async crossorigin="anonymous"
+        data-clerk-publishable-key="pk_test_Y2FsbS1za2luay02Ni5jbGVyay5hY2NvdW50cy5kZXYk"
+        src="https://calm-skink-66.clerk.accounts.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js"
+        type="text/javascript"></script>
+
+    <!-- PolyVision Cloudflare Pages Config (Update before deployment) -->
+    <script>
+        // Uncomment and update with your live Railway URL when deploying to Cloudflare
+        window.ENV_WS_URL = "wss://polyvision-production.up.railway.app/ws/pulse";
+    </script>
+</head>
+
+<body>
+
+    <!-- ── AUTHENTICATION OVERLAY ────────────────────────────────────────────────── -->
+    <div id="authOverlay"
+        style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(10,10,12,0.95);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;backdrop-filter:blur(10px);">
+        <div style="text-align:center;margin-bottom:2rem;">
+            <div style="font-size:3rem;margin-bottom:1rem;">🐋</div>
+            <h1 style="color:var(--text-primary);margin:0;font-size:24px;font-weight:700;">PolyVision Pro</h1>
+            <p style="color:var(--text-muted);margin-top:8px;">Sign in to access the Command Center</p>
+        </div>
+        <div id="clerk-sign-in"></div>
+    </div>
+
+    <!-- ── TOP BAR ──────────────────────────────────────────────────────────────── -->
+    <header class="topbar" id="topbar">
+        <div class="topbar-left">
+            <div class="logo">
+                <span class="logo-icon">🐋</span>
+                <span class="logo-text">PolyVision</span>
+                <span class="logo-tagline">Command Center</span>
+            </div>
+        </div>
+        <div class="topbar-center">
+            <div class="live-indicator">
+                <span class="live-dot" id="liveDot"></span>
+                <span class="live-label">LIVE</span>
+                <span class="live-count" id="liveCount">0 signals today</span>
+            </div>
+            <!-- Wallet Search -->
+            <div class="wallet-search-wrap" id="walletSearchWrap">
+                <span class="ws-icon">🔍</span>
+                <input class="wallet-search-input" id="walletSearchInput"
+                    type="text"
+                    placeholder="Search wallet address or handle…"
+                    autocomplete="off"
+                    spellcheck="false" />
+                <button class="wallet-search-btn" id="walletSearchBtn">Search</button>
+            </div>
+        </div>
+        <div class="topbar-right">
+            <div class="market-stat" id="totalVolumeStat">
+                <span class="stat-label">24H VOLUME</span>
+                <span class="stat-value" id="totalVolume">$0</span>
+            </div>
+            <div class="market-stat" id="whaleCountStat">
+                <span class="stat-label">WHALES ACTIVE</span>
+                <span class="stat-value" id="whaleCount">0</span>
+            </div>
+            <div id="clerk-user-button" style="margin-left: 16px;"></div>
+        </div>
+    </header>
+
+    <!-- ── MAIN LAYOUT ───────────────────────────────────────────────────────────── -->
+    <div class="layout" id="mainLayout">
+
+        <!-- ── COL 1: NAVIGATION ────────────────────────────────────────────────── -->
+        <nav class="sidebar" id="sidebar">
+            <div class="nav-section">
+                <span class="nav-label">Feed</span>
+                <a href="#" class="nav-item active" id="nav-pulse">
+                    <span class="nav-icon">⚡</span> Pulse Feed
+                </a>
+                <a href="#" class="nav-item" id="nav-whales">
+                    <span class="nav-icon">🐋</span> Whale Profiles
+                </a>
+                <a href="#" class="nav-item" id="nav-markets">
+                    <span class="nav-icon">📊</span> Top Markets
+                </a>
+            </div>
+            <div class="nav-section">
+                <span class="nav-label">Portfolio</span>
+                <a href="#" class="nav-item" id="nav-mock">
+                    <span class="nav-icon">🎯</span> Mock Portfolio
+                </a>
+                <a href="#" class="nav-item" id="nav-briefing">
+                    <span class="nav-icon">📰</span> Morning Briefing
+                </a>
+                <a href="#" class="nav-item" id="nav-alerts">
+                    <span class="nav-icon">🔔</span> Alerts
+                    <span class="lock-badge">PRO</span>
+                </a>
+            </div>
+            <div class="nav-section">
+                <span class="nav-label">Filters</span>
+                <div class="filter-group">
+                    <label class="filter-label">Min Size</label>
+                    <div class="filter-pills" id="filterPills">
+                        <button class="pill active" data-min="500">$500+</button>
+                        <button class="pill" data-min="10000">$10K+</button>
+                        <button class="pill" data-min="50000">$50K+</button>
+                        <button class="pill" data-min="100000">$100K+</button>
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label class="filter-label">Side</label>
+                    <div class="filter-pills" id="sidePills">
+                        <button class="pill active" data-side="all">All</button>
+                        <button class="pill" data-side="YES">YES</button>
+                        <button class="pill" data-side="NO">NO</button>
+                    </div>
+                </div>
+            </div>
+            <div class="sidebar-footer">
+                <p class="disclaimer-text">⚠️ Whales can hedge.<br />Trade at your own risk.<br />Not financial advice.
+                </p>
+            </div>
+        </nav>
+
+        <!-- ── COL 2: THE PULSE FEED ────────────────────────────────────────────── -->
+        <main class="pulse-col" id="pulseCol">
+            <div class="section-header">
+                <h1 class="section-title">⚡ The Pulse</h1>
+                <span class="section-subtitle">Real-time Smart Money signals</span>
+                <div class="sort-toggle">
+                    <button class="sort-btn active" id="sortNew">Newest</button>
+                    <button class="sort-btn" id="sortSize">Largest</button>
+                </div>
+            </div>
+
+            <div class="pulse-feed" id="pulseFeed">
+                <!-- Events injected by JS -->
+            </div>
+        </main>
+
+        <!-- ── COL 2 (ALT): WHALE PROFILES ─────────────────────────────────────── -->
+        <main class="pulse-col" id="whalesCol" style="display:none;">
+            <div class="section-header">
+                <h1 class="section-title">🐋 Whale Profiles</h1>
+                <span class="section-subtitle">Global top traders ranked by all-time P&amp;L</span>
+            </div>
+            <div class="whale-profiles-grid" id="whaleProfilesGrid">
+                <div class="lb-loading" id="whaleProfilesLoading">⏳ Loading leaderboard…</div>
+            </div>
+        </main>
+
+        <!-- ── COL 2 (ALT): TOP MARKETS ────────────────────────────────────────── -->
+        <main class="pulse-col" id="marketsCol" style="display:none;">
+            <div class="section-header">
+                <h1 class="section-title">📊 Top Markets</h1>
+                <span class="section-subtitle">Hottest prediction markets right now</span>
+                <div class="sort-toggle">
+                    <button class="sort-btn active" id="mktSortVol">24H Volume</button>
+                    <button class="sort-btn" id="mktSortLiq">Liquidity</button>
+                </div>
+            </div>
+            <div class="markets-grid" id="marketsGrid">
+                <div class="lb-loading" id="marketsLoading">⏳ Loading top markets…</div>
+            </div>
+        </main>
+
+        <!-- ── COL 3: WHALE LEADERBOARD ─────────────────────────────────────────── -->
+        <aside class="leaderboard-col" id="leaderboardCol">
+            <div class="section-header">
+                <div class="lb-header-row">
+                    <h2 class="section-title">🏆 Leaderboard</h2>
+                    <button class="lb-refresh-btn" id="lbRefresh" title="Refresh leaderboard">↻</button>
+                </div>
+                <div class="lb-tabs" id="lbTabs">
+                    <button class="lb-tab active" data-tab="live">🔴 LIVE</button>
+                    <button class="lb-tab" data-tab="alltime">👑 ALL-TIME</button>
+                </div>
+            </div>
+            <!-- LIVE tab: existing whale cards -->
+            <div class="whale-cards" id="whaleCards">
+                <!-- Whale cards injected by JS -->
+            </div>
+            <!-- ALL-TIME tab: global leaderboard -->
+            <div class="lb-alltime hidden" id="lbAlltime">
+                <div class="lb-loading" id="lbLoading">⏳ Loading global leaderboard…</div>
+                <div class="lb-rows" id="lbRows">
+                    <!-- Leaderboard rows injected by JS -->
+                </div>
+            </div>
+        </aside>
+
+    </div>
+
+    <!-- ── PORTFOLIO SLIDE-OVER PANEL ──────────────────────────────────────────── -->
+    <div class="portfolio-overlay" id="portfolioOverlay">
+
+        <div class="portfolio-panel" id="portfolioPanel">
+
+            <!-- Header -->
+            <div class="pf-header">
+                <div class="pf-title-block">
+                    <span class="pf-icon">📂</span>
+                    <div>
+                        <h2 class="pf-title">My Paper Portfolio</h2>
+                        <p class="pf-subtitle">Mock copy-trade tracker · Real market prices</p>
+                    </div>
+                </div>
+                <button class="pf-close" id="pfClose">✕</button>
+            </div>
+
+            <!-- Summary Stats Bar -->
+            <div class="pf-stats-bar" id="pfStatsBar">
+                <div class="pf-stat">
+                    <span class="pf-stat-label">Total Invested</span>
+                    <span class="pf-stat-value" id="pfInvested">—</span>
+                </div>
+                <div class="pf-stat">
+                    <span class="pf-stat-label">Unrealized P&L</span>
+                    <span class="pf-stat-value" id="pfPnl">—</span>
+                </div>
+                <div class="pf-stat">
+                    <span class="pf-stat-label">ROI</span>
+                    <span class="pf-stat-value" id="pfRoi">—</span>
+                </div>
+                <div class="pf-stat">
+                    <span class="pf-stat-label">Win Rate</span>
+                    <span class="pf-stat-value" id="pfWinRate">—</span>
+                </div>
+                <div class="pf-stat">
+                    <span class="pf-stat-label">Open Positions</span>
+                    <span class="pf-stat-value" id="pfCount">—</span>
+                </div>
+            </div>
+
+            <!-- Equity Curve -->
+            <div class="pf-section">
+                <div class="pf-section-label">📈 MY EQUITY CURVE</div>
+                <div class="pf-chart-wrap">
+                    <canvas id="pfChart"></canvas>
+                    <div class="pf-chart-empty" id="pfChartEmpty">Follow some whale trades to see your equity curve
+                        grow.</div>
+                </div>
+            </div>
+
+            <!-- Positions Table -->
+            <div class="pf-section pf-section-grow">
+                <div class="pf-section-label">OPEN POSITIONS</div>
+                <div class="pf-table-wrap" id="pfTableWrap">
+                    <div class="pf-loading" id="pfLoading">⏳ Loading portfolio…</div>
+                    <table class="pf-table hidden" id="pfTable">
+                        <thead>
+                            <tr>
+                                <th>Market</th>
+                                <th>Side</th>
+                                <th>Entry</th>
+                                <th>Current</th>
+                                <th>P&L</th>
+                                <th>Followed</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="pfTableBody"></tbody>
+                    </table>
+                    <div class="pf-empty hidden" id="pfEmpty">
+                        <span class="pf-empty-icon">🎯</span>
+                        <p>No paper positions yet.</p>
+                        <p class="pf-empty-sub">Click "+ Mock Follow" on any whale trade card to start tracking.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── COPY-TRADE HUD (fixed bottom) ────────────────────────────────────────── -->
+    <div class="hud" id="copyHud">
+        <div class="hud-left">
+            <span class="hud-label">📂 MOCK PORTFOLIO</span>
+            <span class="hud-tracked" id="hudTracked">0 trades tracked</span>
+        </div>
+        <div class="hud-center">
+            <span class="hud-label">HYPOTHETICAL ROI</span>
+            <span class="hud-roi" id="hudRoi">+0.00%</span>
+        </div>
+        <div class="hud-right">
+            <span class="hud-label">UNREALIZED P&L</span>
+            <span class="hud-pnl" id="hudPnl">$0.00</span>
+        </div>
+        <div class="hud-action">
+            <button class="btn-hud" id="btnViewPortfolio">View Portfolio →</button>
+            <button class="btn-hud-upgrade" id="btnHudUpgrade">🔓 Unlock Real Trades</button>
+        </div>
+    </div>
+
+    <!-- ── MORNING BRIEFING SLIDE-OVER PANEL ──────────────────────────────────── -->
+    <div class="briefing-overlay" id="briefingOverlay" onclick="if(event.target===this)closeBriefing()">
+        <div class="briefing-panel" id="briefingPanel">
+            <div class="pf-header">
+                <div class="pf-title-block">
+                    <span class="pf-icon">📰</span>
+                    <div>
+                        <h2 class="pf-title">Morning Alpha Briefing</h2>
+                        <p class="pf-subtitle" id="briefingDate">Generated by PolyVision AI · Daily at 8 AM EST</p>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center">
+                    <button class="btn-card btn-mock-follow" id="btnTriggerBriefing" onclick="triggerBriefing()">⚡ Generate Now</button>
+                    <button class="pf-close" onclick="closeBriefing()">✕</button>
+                </div>
+            </div>
+            <!-- Stats bar -->
+            <div class="pf-stats-bar" id="briefingStats" style="display:none">
+                <div class="pf-stat">
+                    <div class="pf-stat-label">ALERTS</div>
+                    <div class="pf-stat-value" id="bStatAlerts">—</div>
+                </div>
+                <div class="pf-stat">
+                    <div class="pf-stat-label">VOLUME</div>
+                    <div class="pf-stat-value" id="bStatVol">—</div>
+                </div>
+                <div class="pf-stat">
+                    <div class="pf-stat-label">TOP MARKET</div>
+                    <div class="pf-stat-value" id="bStatMkt" style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
+                </div>
+                <div class="pf-stat">
+                    <div class="pf-stat-label">SENTIMENT</div>
+                    <div class="pf-stat-value" id="bStatSentiment">—</div>
+                </div>
+            </div>
+            <!-- Report body -->
+            <div class="briefing-body" id="briefingBody">
+                <div class="briefing-empty" id="briefingEmpty">
+                    <span style="font-size:40px">📊</span>
+                    <div style="margin-top:12px;font-weight:700;color:var(--text-primary)">No briefing yet for today</div>
+                    <div style="margin-top:6px;color:var(--text-muted);font-size:13px">Click <strong>⚡ Generate Now</strong> to run the AI analysis on the last 24h of whale activity.</div>
+                </div>
+                <div class="briefing-report" id="briefingReport" style="display:none"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── WHALE PROFILE MODAL ───────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal" id="whaleModal">
+            <button class="modal-close" id="modalClose">✕</button>
+            <div class="modal-content" id="modalContent"></div>
+        </div>
+    </div>
+
+    <!-- ── ALERTS RULES PANEL ─────────────────────────────────────────────────── -->
+    <div class="briefing-overlay" id="alertsOverlay" onclick="if(event.target===this)closeAlerts()">
+        <div class="briefing-panel" id="alertsPanel">
+            <div class="pf-header">
+                <div class="pf-title-block">
+                    <span class="pf-icon">🔔</span>
+                    <div>
+                        <h2 class="pf-title">Custom Alerts</h2>
+                        <p class="pf-subtitle">Get notified when whales match your rules — even when away from the feed</p>
+                    </div>
+                </div>
+                <button class="pf-close" onclick="closeAlerts()">✕</button>
+            </div>
+
+            <!-- Build a new rule -->
+            <div class="alerts-builder" id="alertsBuilder">
+                <h3 class="alerts-section-title">➕ New Alert Rule</h3>
+                <div class="alerts-form">
+                    <div class="alerts-field alerts-field-wide">
+                        <label class="alerts-label">📧 Your Email (for alerts when PolyVision is closed)</label>
+                        <input class="alerts-input" id="alertEmail" type="email" placeholder="you@example.com" autocomplete="email" />
+                    </div>
+                    <div class="alerts-field">
+                        <label class="alerts-label">Min Trade Size</label>
+                        <select class="alerts-select" id="alertMinSize">
+                            <option value="500">$500+</option>
+                            <option value="5000">$5K+</option>
+                            <option value="10000" selected>$10K+</option>
+                            <option value="50000">$50K+</option>
+                            <option value="100000">$100K+</option>
+                        </select>
+                    </div>
+                    <div class="alerts-field">
+                        <label class="alerts-label">Side</label>
+                        <select class="alerts-select" id="alertSide">
+                            <option value="both">Both YES &amp; NO</option>
+                            <option value="YES">YES only</option>
+                            <option value="NO">NO only</option>
+                        </select>
+                    </div>
+                    <div class="alerts-field alerts-field-wide">
+                        <label class="alerts-label">Market keyword (optional)</label>
+                        <input class="alerts-input" id="alertKeyword" type="text" placeholder="e.g. election, bitcoin, trump…" />
+                    </div>
+                    <div class="alerts-field alerts-field-wide">
+                        <label class="alerts-label">Wallet address (optional — watch a specific whale)</label>
+                        <input class="alerts-input" id="alertWallet" type="text" placeholder="e.g. 0x1234…abcd" />
+                    </div>
+                    <button class="btn-card btn-mock-follow" style="width:100%;margin-top:4px" onclick="saveAlertRule()">
+                        🔔 Save Alert Rule
+                    </button>
+                </div>
+            </div>
+
+
+            <!-- Existing rules list -->
+            <div class="alerts-rules-wrap">
+                <h3 class="alerts-section-title">📋 Active Rules</h3>
+                <div id="alertsRulesList">
+                    <div class="briefing-empty" id="alertsEmpty">
+                        <span style="font-size:32px">🔕</span>
+                        <div style="margin-top:8px;font-weight:700;color:var(--text-primary)">No rules saved yet</div>
+                        <div style="margin-top:4px;color:var(--text-muted);font-size:12px">Create a rule above to get browser notifications when whales match your criteria.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Permission prompt -->
+            <div class="alerts-permission" id="alertsPermission" style="display:none">
+                <span>🔔 Enable browser notifications to receive alerts even when PolyVision is in the background.</span>
+                <button class="btn-card btn-mock-follow" onclick="requestAlertPermission()">Enable Notifications</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── WALLET SEARCH RESULT MODAL ──────────────────────────────────────────── -->
+    <div class="modal-overlay" id="walletSearchOverlay" style="display:none" onclick="if(event.target===this)closeWalletSearch()">
+        <div class="modal" id="walletSearchModal" style="max-width:520px;width:92%">
+            <button class="modal-close" id="walletSearchClose" onclick="closeWalletSearch()">✕</button>
+            <div class="modal-content" id="walletSearchContent" style="padding:24px">
+                <div style="text-align:center;padding:40px 0;color:var(--text-muted)">
+                    <div style="font-size:36px">🔍</div>
+                    <div style="margin-top:8px">Enter a wallet address or handle above to look up a whale.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── PRO UPGRADE MODAL ──────────────────────────────────────────────────── -->
+    <div class="modal-overlay" id="proUpgradeOverlay" style="display:none" onclick="if(event.target===this)closeProModal()">
+        <div class="modal" id="proModal" style="max-width:480px;width:92%;text-align:center">
+            <button class="modal-close" id="proUpgradeClose" onclick="closeProModal()">✕</button>
+            <div style="padding:32px 24px">
+                <div style="font-size:48px;margin-bottom:12px">🏆</div>
+                <h2 style="font-size:22px;font-weight:800;color:var(--text-primary);margin:0 0 8px">Unlock PolyVision PRO</h2>
+                <p style="color:var(--text-muted);font-size:14px;margin:0 0 24px">Get ahead of the market with full Smart Money intel.</p>
+                <div class="pro-features-grid">
+                    <div class="pro-feature-item">✅ Full Whale Leaderboard (50+ tracked)</div>
+                    <div class="pro-feature-item">✅ Unlimited Mock Portfolio trades</div>
+                    <div class="pro-feature-item">✅ Custom Alert Rules + Push Notifications</div>
+                    <div class="pro-feature-item">✅ Morning AI Alpha Briefing (daily)</div>
+                    <div class="pro-feature-item">✅ Whale X-Ray deep profiles</div>
+                    <div class="pro-feature-item">✅ All future PRO features</div>
+                </div>
+                <div style="margin:24px 0 8px">
+                    <button class="btn-hud-upgrade" style="width:100%;padding:14px;font-size:15px;border-radius:10px" id="btnGoStripe">
+                        🔓 Unlock Real Trades — Go PRO
+                    </button>
+                </div>
+                <p style="font-size:11px;color:var(--text-muted)">Secure payment via Stripe · Cancel anytime</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── INCOMING ALERT TOAST ──────────────────────────────────────────────────── -->
+    <div class="toast-container" id="toastContainer"></div>
+
+
+
+    <script src="app.js?v=19"></script>
+</body>
+
+</html>
