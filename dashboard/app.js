@@ -814,7 +814,7 @@ function dismissToast(toast) {
 }
 
 // ── Paper Trading — Real P&L Engine ──────────────────────────────────────────
-const BRAIN_URL = 'http://localhost:8000';
+const BRAIN_URL = window.ENV_BRAIN_URL || 'http://localhost:8000';
 // Maps local event ID → paper trade_id returned by the Brain API
 const paperTradeIds = {};
 
