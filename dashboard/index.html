@@ -46,6 +46,8 @@
     .nav-links { display: flex; gap: 24px; align-items: center; }
     .nav-links a { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; transition: color 0.2s; }
     .nav-links a:hover { color: var(--text); }
+    .nav-link-btn { background: none; border: none; color: var(--muted); font-size: 14px; font-weight: 500; cursor: pointer; padding: 0; font-family: inherit; transition: color 0.2s; }
+    .nav-link-btn:hover { color: var(--text); }
     .nav-cta {
       background: var(--mint); color: #0d1117; border: none; border-radius: 8px;
       padding: 9px 20px; font-size: 14px; font-weight: 700; cursor: pointer;
@@ -236,8 +238,8 @@
   <div class="nav-links">
     <a href="#features">Features</a>
     <a href="#pricing">Pricing</a>
-    <a href="/app">Dashboard →</a>
-    <a class="nav-cta" href="/app">Sign In</a>
+    <button class="nav-link-btn" onclick="window.location.assign('/app')">Dashboard →</button>
+    <button class="nav-cta" onclick="window.location.assign('/app')">Sign In</button>
   </div>
 </nav>
 
@@ -252,7 +254,7 @@
     Real-time alerts when $500K+ traders move on Polymarket. See the whale consensus before the crowd. Never miss alpha again.
   </p>
   <div class="hero-actions">
-    <a class="btn-primary" href="/app">🐋 Watch Live Feed</a>
+    <button class="btn-primary" onclick="window.location.assign('/app')">🐋 Watch Live Feed</button>
     <a class="btn-secondary" href="#pricing">View Pricing</a>
   </div>
   <div class="stats-bar">
