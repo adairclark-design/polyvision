@@ -553,8 +553,8 @@ async def ws_pulse(websocket: WebSocket):
 class CheckoutRequest(BaseModel):
     clerk_user_id: str
     email:         str
-    success_url:   str = 'https://polyvision.pages.dev/app?upgrade=success'
-    cancel_url:    str = 'https://polyvision.pages.dev/app?upgrade=cancelled'
+    success_url:   str = 'https://polyvision.app/app?upgrade=success'
+    cancel_url:    str = 'https://polyvision.app/app?upgrade=cancelled'
 
 @app.post('/checkout/create-session')
 async def create_checkout_session(body: CheckoutRequest):

@@ -270,7 +270,7 @@ def _send_resolution_alerts(conn, market_id: str, winner: str):
               <p>Your position: <strong>{f.get('outcome','?')}</strong></p>
               <p style="font-size:22px;font-weight:800;color:{'#00ffa3' if user_won else '#ff4d6d'}">{pnl_str} mock P&L</p>
               <hr style="border:1px solid rgba(255,255,255,0.08);margin:20px 0"/>
-              <p style="font-size:12px;color:#8b949e">This is a mock portfolio — no real money involved. <a href="https://polyvision.pages.dev/app" style="color:#00ffa3">View your portfolio →</a></p>
+              <p style="font-size:12px;color:#8b949e">This is a mock portfolio — no real money involved. <a href="https://polyvision.app/app" style="color:#00ffa3">View your portfolio →</a></p>
             </div>"""
 
             # Email via Resend

@@ -29,7 +29,7 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 RESEND_FROM = os.getenv("RESEND_FROM", "PolyVision Alerts <alerts@polyvision.app>")
-APP_URL = os.getenv("APP_URL", "https://polyvision.pages.dev")
+APP_URL = os.getenv("APP_URL", "https://polyvision.app")
 
 logging.basicConfig(
     level=logging.INFO,
