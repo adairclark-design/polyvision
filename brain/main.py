@@ -275,7 +275,11 @@ async def proxy_markets(limit: int = 60, order: str = 'volume24hr', ascending: b
         f'?limit={limit}&order={order}&ascending={str(ascending).lower()}&active=true'
     )
     try:
-        resp = httpx.get(url, timeout=12)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+        }
+        resp = httpx.get(url, headers=headers, timeout=12)
         resp.raise_for_status()
         return JSONResponse(content=resp.json())
     except Exception as e:
