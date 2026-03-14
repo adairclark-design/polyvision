@@ -1461,9 +1461,9 @@ async function loadTopMarkets() {
   if (marketsData.length) { renderMarkets(); return; } // already loaded
   const grid = document.getElementById('marketsGrid');
 
-  // Try data-api first (CORS-friendly, works from Cloudflare Pages)
+  // Primary: Railway proxy (avoids CORS issues with gamma-api)
   const endpoints = [
-    'https://data-api.polymarket.com/markets?limit=60&order=volume24hr&ascending=false&active=true',
+    `${BRAIN_URL}/markets?limit=60&order=volume24hr&ascending=false`,
     'https://gamma-api.polymarket.com/markets?limit=60&order=volume24hr&ascending=false&active=true',
   ];
 

@@ -267,6 +267,21 @@ async def run_pipeline(event_dict: dict):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+@app.get('/markets')
+async def proxy_markets(limit: int = 60, order: str = 'volume24hr', ascending: bool = False):
+    """Proxy Polymarket top markets — browser CORS blocks direct calls."""
+    url = (
+        f'https://gamma-api.polymarket.com/markets'
+        f'?limit={limit}&order={order}&ascending={str(ascending).lower()}&active=true'
+    )
+    try:
+        resp = httpx.get(url, timeout=12)
+        resp.raise_for_status()
+        return JSONResponse(content=resp.json())
+    except Exception as e:
+        log.warning(f'Markets proxy error: {e}')
+        raise HTTPException(status_code=502, detail='Could not fetch markets from Polymarket API.')
+
 # ── Paper Trading Endpoints ───────────────────────────────────────────────────
 
 class PaperFollowRequest(BaseModel):
