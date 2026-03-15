@@ -51,7 +51,194 @@
     </script>
 </head>
 
-<body>
+<!-- ── MOBILE PWA INSTALL BANNER ──────────────────────────────────────────── -->
+<!-- Shown only on mobile browsers where the app is not yet installed           -->
+<div id="pwaInstallBanner" style="display:none">
+  <div class="pwa-banner-inner">
+    <div class="pwa-banner-icon">📲</div>
+    <div class="pwa-banner-text">
+      <div class="pwa-banner-title">Add PolyVision to your Home Screen</div>
+      <div class="pwa-banner-sub" id="pwaBannerSub">Get whale alerts even when the app is closed</div>
+    </div>
+    <button class="pwa-install-btn" id="pwaInstallBtn">Install</button>
+    <button class="pwa-dismiss-btn" id="pwaDismissBtn" aria-label="Dismiss">✕</button>
+  </div>
+  <!-- iOS step-by-step guide shown below the banner -->
+  <div class="pwa-ios-guide" id="pwaIosGuide" style="display:none">
+    <div class="pwa-guide-step">
+      <span class="pwa-guide-num">1</span>
+      Tap the <strong>Share</strong> icon <span class="pwa-share-icon">⎋</span> in Safari's bottom toolbar
+    </div>
+    <div class="pwa-guide-step">
+      <span class="pwa-guide-num">2</span>
+      Scroll down and tap <strong>"Add to Home Screen"</strong>
+    </div>
+    <div class="pwa-guide-step">
+      <span class="pwa-guide-num">3</span>
+      Tap <strong>"Add"</strong> — done! Open the 🐋 icon on your home screen.
+    </div>
+    <div class="pwa-share-arrow">⬇ The Share button is here in Safari</div>
+  </div>
+</div>
+
+<style>
+  #pwaInstallBanner {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 10000;
+    background: linear-gradient(135deg, #0d1f17 0%, #0a1a10 100%);
+    border-top: 2px solid #00ffa3;
+    padding: 14px 16px 14px;
+    box-shadow: 0 -4px 24px rgba(0,255,163,0.18);
+    animation: slideUpBanner 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes slideUpBanner {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  .pwa-banner-inner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+  .pwa-banner-icon { font-size: 28px; flex-shrink: 0; }
+  .pwa-banner-text { flex: 1; min-width: 0; }
+  .pwa-banner-title { color: #fff; font-weight: 700; font-size: 14px; }
+  .pwa-banner-sub   { color: #00ffa3; font-size: 12px; margin-top: 2px; }
+  .pwa-install-btn {
+    background: #00ffa3;
+    color: #0d1117;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+  .pwa-install-btn:active { opacity: 0.8; }
+  .pwa-dismiss-btn {
+    background: none;
+    border: none;
+    color: #6b7280;
+    font-size: 18px;
+    cursor: pointer;
+    padding: 4px 8px;
+    flex-shrink: 0;
+    font-family: inherit;
+  }
+  /* iOS guide */
+  .pwa-ios-guide {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .pwa-guide-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #d1d5db;
+    font-size: 13px;
+    margin-bottom: 8px;
+  }
+  .pwa-guide-num {
+    width: 22px;
+    height: 22px;
+    background: #00ffa3;
+    color: #0d1117;
+    border-radius: 50%;
+    font-weight: 800;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .pwa-share-icon { font-size: 18px; }
+  .pwa-share-arrow {
+    text-align: center;
+    color: #00ffa3;
+    font-size: 12px;
+    font-weight: 700;
+    margin-top: 4px;
+    animation: pulseArrow 1.5s ease-in-out infinite;
+  }
+  @keyframes pulseArrow {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+</style>
+
+<script>
+(function() {
+  // Don't show if already running as installed PWA
+  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone) return;
+  // Only show on mobile
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (!isMobile) return;
+  // Don't show if user dismissed recently
+  const dismissed = parseInt(localStorage.getItem('pwa_dismissed') || '0');
+  if (Date.now() - dismissed < 7 * 24 * 60 * 60 * 1000) return; // 7-day snooze
+
+  const isIOS     = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  const banner    = document.getElementById('pwaInstallBanner');
+  const sub       = document.getElementById('pwaBannerSub');
+  const installBtn = document.getElementById('pwaInstallBtn');
+  const dismissBtn = document.getElementById('pwaDismissBtn');
+  const iosGuide  = document.getElementById('pwaIosGuide');
+
+  let deferredPrompt = null;
+
+  if (isAndroid) {
+    // Capture Chrome install prompt
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      sub.textContent = 'One tap to install — get push notifications';
+      banner.style.display = 'block';
+    });
+    installBtn.addEventListener('click', async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        if (outcome === 'accepted') banner.style.display = 'none';
+        deferredPrompt = null;
+      }
+    });
+  }
+
+  if (isIOS) {
+    sub.textContent = 'Tap Install to see how → get push alerts on your phone';
+    installBtn.textContent = 'How to Install';
+    banner.style.display = 'block';
+    installBtn.addEventListener('click', () => {
+      iosGuide.style.display = iosGuide.style.display === 'none' ? 'block' : 'none';
+      installBtn.textContent = iosGuide.style.display === 'none' ? 'How to Install' : 'Got it!';
+    });
+  }
+
+  dismissBtn.addEventListener('click', () => {
+    banner.style.display = 'none';
+    localStorage.setItem('pwa_dismissed', Date.now().toString());
+  });
+
+  // Hide banner once installed
+  window.addEventListener('appinstalled', () => {
+    banner.style.display = 'none';
+    localStorage.setItem('pwa_installed', '1');
+  });
+})();
+</script>
 
     <!-- ── AUTHENTICATION OVERLAY ────────────────────────────────────────────────── -->
     <div id="authOverlay"
