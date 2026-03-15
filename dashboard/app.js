@@ -1461,8 +1461,11 @@ async function loadTopMarkets() {
   if (marketsData.length) { renderMarkets(); return; } // already loaded
   const grid = document.getElementById('marketsGrid');
 
-  // Primary: Railway proxy (avoids CORS issues with gamma-api)
+  // Primary: Cloudflare Pages Function (edge proxy, not IP-blocked by Polymarket)
+  // Fallback 1: Railway proxy (may be IP-blocked)
+  // Fallback 2: gamma-api direct (blocked by CORS in browser, but tried last)
   const endpoints = [
+    `/api/markets?limit=60&order=volume24hr&ascending=false`,
     `${BRAIN_URL}/markets?limit=60&order=volume24hr&ascending=false`,
     'https://gamma-api.polymarket.com/markets?limit=60&order=volume24hr&ascending=false&active=true',
   ];
