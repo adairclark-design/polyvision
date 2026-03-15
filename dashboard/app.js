@@ -751,10 +751,11 @@ function renderFeed() {
     return true;
   });
 
-  // Sort
-  if (state.sortBy === 'largest') {
-    events.sort((a, b) => b.usdValue - a.usdValue);
-  }
+  // Sort — always sort by timestamp descending first so newest is on top
+  events.sort((a, b) => {
+    if (state.sortBy === 'largest') return b.usdValue - a.usdValue;
+    return b.timestamp - a.timestamp;  // newest first (default)
+  });
 
   if (events.length === 0) {
     pulseFeed.innerHTML = `<div class="empty-state"><span class="empty-icon">🔍</span><span>Waiting for live signals...</span></div>`;
