@@ -946,26 +946,64 @@ function getFollowedWhales() {
 function saveFollowedWhales(set) {
   localStorage.setItem('followedWhales', JSON.stringify([...set]));
 }
-window.toggleFollowWhale = function(wallet) {
+window.toggleFollowWhale = async function(wallet) {
   const set = getFollowedWhales();
   const isNowFollowed = !set.has(wallet);
+
   if (isNowFollowed) {
-    // Request notification permission the first time
+    // 1. Request browser notification permission
     if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+      await Notification.requestPermission();
     }
     set.add(wallet);
   } else {
     set.delete(wallet);
   }
   saveFollowedWhales(set);
-  // Update all follow buttons currently visible for this wallet
+
+  // 2. Sync with Railway backend for server-side OneSignal push
+  try {
+    // Get OneSignal player ID (SDK v16)
+    let playerId = null;
+    if (window.OneSignal) {
+      // v16: OneSignal.User.PushSubscription.id (may be null if not subscribed yet)
+      playerId = typeof OneSignal.User?.PushSubscription?.id === 'string'
+        ? OneSignal.User.PushSubscription.id
+        : await new Promise(res => {
+            OneSignal.push(() => {
+              OneSignal.getUserId(id => res(id));
+            });
+          });
+    }
+
+    if (playerId) {
+      const method = isNowFollowed ? 'POST' : 'DELETE';
+      const user   = typeof Clerk !== 'undefined' && Clerk.user ? Clerk.user.id : '';
+      await fetch(`${BRAIN_URL}/whale-follow`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet_address:      wallet,
+          onesignal_player_id: playerId,
+          clerk_user_id:       user,
+        }),
+      });
+      console.log(`[PV] Whale ${isNowFollowed ? 'follow' : 'unfollow'} synced to backend. Player: ${playerId.slice(0,12)}`);
+    } else {
+      console.warn('[PV] OneSignal player ID not available yet — server-side push not registered.');
+    }
+  } catch (err) {
+    console.warn('[PV] Could not sync whale follow to backend:', err.message);
+  }
+
+  // 3. Update all follow buttons visible for this wallet
   document.querySelectorAll(`.whale-follow-btn[data-wallet="${wallet}"]`).forEach(btn => {
     btn.textContent = isNowFollowed ? '🔔 Following' : '🔔 Follow Whale';
     btn.classList.toggle('following', isNowFollowed);
   });
   return isNowFollowed;
 };
+
 
 window.openWhaleModal = function (whaleId, e) {
   if (e) e.stopPropagation();

@@ -124,6 +124,7 @@ async def lifespan(app: FastAPI):
             init_resolver_db()
             init_subscriptions_db()
             init_price_tracker_db()
+            init_whale_followers_db()
             log.info('PostgreSQL tables initialized.')
         except Exception as e:
             log.warning(f'DB init skipped (no connection?): {e}')
@@ -185,6 +186,84 @@ class TradeEvent(BaseModel):
     taker_address: str = ''
     side:          str = 'BUY'
     timestamp:     str = ''
+    trader_pseudonym: str = ''
+    trader_name:   str = ''
+
+class WhaleFollowRequest(BaseModel):
+    wallet_address:     str
+    onesignal_player_id: str
+    clerk_user_id:      str = ''
+
+# ── Whale Followers ────────────────────────────────────────────────────────────
+ONESIGNAL_APP_ID  = os.getenv('ONESIGNAL_APP_ID', '')
+ONESIGNAL_API_KEY = os.getenv('ONESIGNAL_API_KEY', '')
+
+def init_whale_followers_db():
+    """Create whale_followers table if it doesn't exist."""
+    if not DATABASE_URL:
+        return
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS whale_followers (
+                        id                  SERIAL PRIMARY KEY,
+                        wallet_address      TEXT NOT NULL,
+                        onesignal_player_id TEXT NOT NULL,
+                        clerk_user_id       TEXT DEFAULT '',
+                        created_at          TIMESTAMPTZ DEFAULT NOW(),
+                        UNIQUE(wallet_address, onesignal_player_id)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_wf_wallet ON whale_followers(wallet_address);
+                """)
+            conn.commit()
+        log.info('whale_followers table ready.')
+    except Exception as e:
+        log.warning(f'Could not init whale_followers table: {e}')
+
+def get_whale_follower_player_ids(wallet_address: str) -> list:
+    """Return all OneSignal player IDs following this wallet."""
+    if not DATABASE_URL:
+        return []
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    'SELECT onesignal_player_id FROM whale_followers WHERE wallet_address = %s',
+                    (wallet_address,)
+                )
+                return [row[0] for row in cur.fetchall()]
+    except Exception as e:
+        log.warning(f'Could not fetch whale followers: {e}')
+        return []
+
+def send_targeted_push(player_ids: list, title: str, body: str, url: str = 'https://polyvision.app/app'):
+    """Send a OneSignal push notification to specific player IDs."""
+    if not ONESIGNAL_APP_ID or not ONESIGNAL_API_KEY or not player_ids:
+        return
+    try:
+        import requests as req_lib
+        resp = req_lib.post(
+            'https://onesignal.com/api/v1/notifications',
+            headers={
+                'Authorization': f'Basic {ONESIGNAL_API_KEY}',
+                'Content-Type':  'application/json',
+            },
+            json={
+                'app_id':             ONESIGNAL_APP_ID,
+                'include_player_ids': player_ids,
+                'headings':           {'en': title},
+                'contents':           {'en': body},
+                'url':                url,
+                'chrome_web_icon':    'https://polyvision.app/assets/icon-192.png',
+                'firefox_icon':       'https://polyvision.app/assets/icon-192.png',
+            },
+            timeout=8,
+        )
+        log.info(f'OneSignal push sent to {len(player_ids)} follower(s): {resp.status_code}')
+    except Exception as e:
+        log.warning(f'OneSignal targeted push failed: {e}')
+
 
 # ── Pipeline Helpers ──────────────────────────────────────────────────────────
 ADJECTIVES = ['Strategist','Oracle','Tactician','Visionary','Analyst',
@@ -257,7 +336,25 @@ async def run_pipeline(event_dict: dict):
             None, check_and_fire_email_alerts, alert
         )
 
-        # 7. Push/Discord/Telegram notify
+        # 6.5 Targeted OneSignal push to whale followers
+        #     Only fires for wallets where at least one user clicked "Follow Whale"
+        wallet = event_dict.get('maker_address', '')
+        if wallet:
+            follower_ids = await asyncio.get_event_loop().run_in_executor(
+                None, get_whale_follower_player_ids, wallet
+            )
+            if follower_ids:
+                handle = alert.get('trader_handle', 'A whale')
+                usd    = alert.get('usd_value', 0)
+                market = alert.get('market_title', 'Unknown Market')[:60]
+                outcome = alert.get('outcome', '')
+                push_title = f"🐋 {handle} just traded!"
+                push_body  = f"{outcome} ${usd:,.0f} on \"{market}\""
+                await asyncio.get_event_loop().run_in_executor(
+                    None, send_targeted_push, follower_ids, push_title, push_body
+                )
+
+        # 7. Push/Discord/Telegram notify (broadcast all alerts)
         await asyncio.get_event_loop().run_in_executor(
             None, deliver, alert, False
         )
@@ -266,6 +363,46 @@ async def run_pipeline(event_dict: dict):
         log.error(f'Pipeline error: {e}', exc_info=True)
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+
+
+# ── Whale Follow / Unfollow ───────────────────────────────────────────────────
+@app.post('/whale-follow', status_code=200)
+async def whale_follow(req: WhaleFollowRequest):
+    """Register a user (by OneSignal player ID) as a follower of a specific whale wallet."""
+    if not DATABASE_URL:
+        return {'status': 'ok', 'note': 'DB not available — push will not fire server-side'}
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO whale_followers (wallet_address, onesignal_player_id, clerk_user_id)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (wallet_address, onesignal_player_id) DO NOTHING;
+                """, (req.wallet_address, req.onesignal_player_id, req.clerk_user_id))
+            conn.commit()
+        log.info(f'Whale follow: {req.wallet_address[:12]} ← {req.onesignal_player_id[:12]}')
+        return {'status': 'following'}
+    except Exception as e:
+        log.error(f'whale_follow error: {e}')
+        raise HTTPException(status_code=500, detail='DB error')
+
+@app.delete('/whale-follow', status_code=200)
+async def whale_unfollow(req: WhaleFollowRequest):
+    """Remove a user's follow subscription for a specific whale wallet."""
+    if not DATABASE_URL:
+        return {'status': 'ok'}
+    try:
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    DELETE FROM whale_followers
+                    WHERE wallet_address = %s AND onesignal_player_id = %s;
+                """, (req.wallet_address, req.onesignal_player_id))
+            conn.commit()
+        return {'status': 'unfollowed'}
+    except Exception as e:
+        log.error(f'whale_unfollow error: {e}')
+        raise HTTPException(status_code=500, detail='DB error')
 
 @app.get('/markets')
 async def proxy_markets(limit: int = 60, order: str = 'volume24hr', ascending: bool = False):
