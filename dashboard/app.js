@@ -1008,22 +1008,32 @@ window.openWhaleModal = function (whaleId, e) {
 
   if (!whale) return; // genuinely not found
 
-  const recentHtml = whale.recentTrades.map(t => `
+  const recentHtml = (whale.recentTrades || []).map(t => `
     <div class="recent-trade-row">
-      <span class="trade-outcome ${t.outcome.toLowerCase()}">${t.outcome}</span>
-      <span class="trade-market">${t.market.slice(0, 36)}${t.market.length > 36 ? '...' : ''}</span>
+      <span class="trade-outcome ${(t.outcome||'').toLowerCase()}">${t.outcome}</span>
+      <span class="trade-market">${(t.market||'').slice(0, 36)}${(t.market||'').length > 36 ? '...' : ''}</span>
       <span class="trade-size">${fmt(t.size)}</span>
     </div>
-  `).join('');
+  `).join('') || '<div style="color:var(--text-muted);font-size:13px">No recent positions in feed</div>';
+
+  const isFollowed = getFollowedWhales().has(whale.wallet || '');
 
   modalContent.innerHTML = `
     <div class="modal-whale-top">
-      <img class="modal-avatar" src="${whale.avatar}" alt="${whale.handle}" />
+      ${whale.avatar
+        ? `<img class="modal-avatar" src="${whale.avatar}" alt="${whale.handle}" />`
+        : `<div class="modal-avatar" style="display:flex;align-items:center;justify-content:center;font-size:32px;background:rgba(0,255,163,0.1);border-radius:50%">🐋</div>`}
       <div>
         <div class="modal-handle">${whale.handle}</div>
-        <div class="modal-wallet">${whale.wallet} · ${whale.dominantCategory}</div>
+        <div class="modal-wallet">${whale.wallet ? whale.wallet.slice(0,12)+'…' : ''} · ${whale.dominantCategory}</div>
       </div>
     </div>
+    ${whale.wallet ? `
+    <button class="whale-follow-btn ${isFollowed ? 'following' : ''}"
+            data-wallet="${whale.wallet}"
+            onclick="toggleFollowWhale('${whale.wallet}')">
+      ${isFollowed ? '🔔 Following' : '🔔 Follow Whale'}
+    </button>` : ''}
     <div class="modal-stats-grid">
       <div class="modal-stat">
         <div class="modal-stat-label">Win Rate</div>
