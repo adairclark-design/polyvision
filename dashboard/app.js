@@ -930,8 +930,44 @@ window.dismissCard = function (eventId, e) {
 // ── Whale Profile Modal ───────────────────────────────────────────────────────
 window.openWhaleModal = function (whaleId, e) {
   if (e) e.stopPropagation();
-  const whale = WHALES.find(w => w.id === whaleId);
-  if (!whale) return;
+
+  // 1. Try static whale roster (demo profiles)
+  let whale = WHALES.find(w => w.id === whaleId);
+
+  // 2. Fallback: build a whale object from live state.events
+  if (!whale) {
+    const ev = state.events.find(ev =>
+      ev.whale?.id === whaleId ||
+      ev.whale?.wallet === whaleId ||
+      ev.whale?.handle === whaleId
+    );
+    if (ev?.whale) {
+      const w = ev.whale;
+      const walletEvents = state.events.filter(x => x.whale?.wallet === w.wallet);
+      const totalVolume  = walletEvents.reduce((s, x) => s + (x.usdValue || 0), 0);
+      whale = {
+        id:              w.id || whaleId,
+        handle:          w.handle || 'Unknown Whale',
+        avatar:          w.avatar || '',
+        wallet:          w.wallet || whaleId,
+        winRate:         w.winRate,
+        roi30d:          w.roi30d || 0,
+        roiAllTime:      w.roiAllTime || 0,
+        totalVolume,
+        dominantCategory: w.dominantCategory || 'Prediction Markets',
+        totalTrades:     walletEvents.length,
+        badge:           w.badge || `${walletEvents.length} trades tracked`,
+        sparkData:       walletEvents.slice(-20).map((_, i) => i * 1.5),
+        recentTrades:    walletEvents.slice(0, 3).map(x => ({
+          market:  x.market || x.description || 'Unknown Market',
+          outcome: x.outcome || '?',
+          size:    x.usdValue || 0,
+        })),
+      };
+    }
+  }
+
+  if (!whale) return; // genuinely not found
 
   const recentHtml = whale.recentTrades.map(t => `
     <div class="recent-trade-row">
