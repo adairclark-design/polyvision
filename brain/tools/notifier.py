@@ -26,9 +26,11 @@ load_dotenv()
 # ── Config ────────────────────────────────────────────────────────────────────
 ONESIGNAL_APP_ID   = os.getenv("ONESIGNAL_APP_ID", "")
 ONESIGNAL_API_KEY  = os.getenv("ONESIGNAL_API_KEY", "")
-DISCORD_WEBHOOK_URL= os.getenv("DISCORD_WEBHOOK_URL", "")   # preferred: channel webhook URL
+DISCORD_WEBHOOK_URL= os.getenv("DISCORD_WEBHOOK_URL", "")   # main whale-alerts channel
+DISCORD_WHALE_WEBHOOK_URL = os.getenv("DISCORD_WHALE_WEBHOOK_URL", "")  # premium channel for WHALE-tier only
 DISCORD_BOT_TOKEN  = os.getenv("DISCORD_BOT_TOKEN", "")    # fallback: bot token
 DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID", "")
+DISCORD_MIN_SIZE   = float(os.getenv("DISCORD_MIN_SIZE", "5000"))  # min USD to post to shared Discord
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 REDIS_URL          = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -193,10 +195,13 @@ def send_onesignal(push: dict):
     r.raise_for_status()
 
 
-def send_discord(embed: dict):
-    """Send to Discord via webhook URL (preferred) or bot token."""
-    if DISCORD_WEBHOOK_URL:
-        r = requests.post(DISCORD_WEBHOOK_URL, json=embed, timeout=10)
+def send_discord(embed: dict, webhook_override: str = ""):
+    """Send to Discord via webhook URL (preferred) or bot token.
+    webhook_override allows posting to a secondary channel (e.g. premium whale alerts).
+    """
+    url = webhook_override or DISCORD_WEBHOOK_URL
+    if url:
+        r = requests.post(url, json=embed, timeout=10)
         r.raise_for_status()
         return
     if not DISCORD_BOT_TOKEN or not DISCORD_CHANNEL_ID:
@@ -223,7 +228,16 @@ def send_telegram(text: str):
 
 # ── Main Delivery ─────────────────────────────────────────────────────────────
 def deliver(payload: dict, dry_run: bool = False) -> dict:
-    """Route payload to all channels. Returns delivery receipt."""
+    """Route payload to all channels. Returns delivery receipt.
+
+    Channel routing:
+      - Live feed WebSocket: ALL trades (handled upstream, not here)
+      - Email alerts:        Per-user rules with custom min_size (handled upstream)
+      - OneSignal push:      ALL trades that pass rate limit (targeted whale follows handled upstream)
+      - Discord:             Only trades >= DISCORD_MIN_SIZE (default $5,000)
+                             WHALE-tier also posts to DISCORD_WHALE_WEBHOOK_URL if set
+      - Telegram:            Only trades >= DISCORD_MIN_SIZE
+    """
     os.makedirs(".tmp", exist_ok=True)
 
     if not check_rate_limit(payload, dry_run):
@@ -233,21 +247,52 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
     embed   = format_discord_embed(payload)
     tg_text = format_telegram(payload)
 
+    # ── Discord / Telegram size gate ───────────────────────────────────────────
+    usd_value  = float(payload.get("usd_value", 0))
+    alert_tier = payload.get("alert_tier", "STANDARD")
+    send_discord_flag = usd_value >= DISCORD_MIN_SIZE
+
+    if not send_discord_flag:
+        log.info(
+            f"Discord/Telegram skipped (${usd_value:,.0f} < DISCORD_MIN_SIZE ${DISCORD_MIN_SIZE:,.0f}). "
+            f"Trade still appears in live feed & email alerts."
+        )
+
     if dry_run:
         print("\n── 📱 Push Notification ──────────────────────────")
         print(f"  Title: {push['title']}")
         print(f"  Body:  {push['body']}")
-        print("\n── 🎮 Discord Embed ───────────────────────────────")
-        print(json.dumps(embed, indent=2))
+        if send_discord_flag:
+            print("\n── 🎮 Discord Embed ───────────────────────────────")
+            print(json.dumps(embed, indent=2))
+        else:
+            print(f"\n── 🎮 Discord: SKIPPED (${usd_value:,.0f} below ${DISCORD_MIN_SIZE:,.0f} threshold) ──")
         print("\n── 📨 Telegram Message ────────────────────────────")
-        print(tg_text)
-        return {"status": "dry_run", "channels": {"push": "skipped", "discord": "skipped", "telegram": "skipped"}}
+        print(tg_text if send_discord_flag else "SKIPPED")
+        return {"status": "dry_run", "channels": {}}
 
     results = {
-        "push":     send_with_retry("OneSignal Push", lambda: send_onesignal(push)),
-        "discord":  send_with_retry("Discord",        lambda: send_discord(embed)),
-        "telegram": send_with_retry("Telegram",       lambda: send_telegram(tg_text)),
+        "push": send_with_retry("OneSignal Push", lambda: send_onesignal(push)),
     }
+
+    if send_discord_flag:
+        # Post to main #whale-alerts channel
+        results["discord"] = send_with_retry("Discord", lambda: send_discord(embed))
+
+        # Also post WHALE-tier to the premium channel (if a second webhook is configured)
+        if alert_tier == "WHALE" and DISCORD_WHALE_WEBHOOK_URL:
+            whale_embed = dict(embed)
+            whale_embed["content"] = "@here 🐳 **WHALE ALERT** — Large position detected!"
+            results["discord_whale"] = send_with_retry(
+                "Discord Whale Channel",
+                lambda: send_discord(whale_embed, webhook_override=DISCORD_WHALE_WEBHOOK_URL),
+            )
+
+        results["telegram"] = send_with_retry("Telegram", lambda: send_telegram(tg_text))
+    else:
+        results["discord"] = "skipped_min_size"
+        results["telegram"] = "skipped_min_size"
+
     return {"status": "delivered", "channels": results}
 
 
