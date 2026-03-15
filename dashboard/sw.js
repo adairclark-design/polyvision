@@ -4,10 +4,10 @@
  * Actual data (WebSocket/API) always comes from the live backend.
  */
 
-const CACHE_NAME = 'polyvision-shell-v1';
+const CACHE_NAME = 'polyvision-shell-v2';
 const SHELL_ASSETS = [
-  '/',
-  '/index.html',
+  '/app',
+  '/app.html',
   '/style.css',
   '/app.js',
   '/manifest.json',
