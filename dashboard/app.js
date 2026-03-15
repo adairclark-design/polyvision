@@ -678,9 +678,20 @@ function connectLiveFeed() {
         updateStats();
         checkEventAgainstRules(ev);
 
-        // Animate the new card only if it's new (not a burst payload)
-        // A simple heuristic: if it arrived in the last 10 seconds, it's live
+        // ── Push notification for followed whales ─────────────────────────
         const isLive = (Date.now() - ev.timestamp) < 10000;
+        const followedWhales = getFollowedWhales();
+        if (isLive && ev.whale?.wallet && followedWhales.has(ev.whale.wallet)) {
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification(`🐋 ${ev.whale.handle} just traded!`, {
+              body: `${ev.outcome} $${ev.usdValue.toLocaleString('en-US', {maximumFractionDigits:0})} on "${ev.market.slice(0,60)}"`,
+              icon: '/assets/icon-192.png',
+              tag:  ev.id,   // deduplicates if the same alert fires twice
+            });
+          }
+        }
+
+        // Animate the new card only if it's live
         if (isLive) {
           const firstCard = pulseFeed.querySelector('.event-card');
           if (firstCard) {
@@ -927,7 +938,35 @@ window.dismissCard = function (eventId, e) {
   renderFeed();
 };
 
-// ── Whale Profile Modal ───────────────────────────────────────────────────────
+// ── Whale Follow (push notification subscriptions) ──────────────────────────
+function getFollowedWhales() {
+  try { return new Set(JSON.parse(localStorage.getItem('followedWhales') || '[]')); }
+  catch { return new Set(); }
+}
+function saveFollowedWhales(set) {
+  localStorage.setItem('followedWhales', JSON.stringify([...set]));
+}
+window.toggleFollowWhale = function(wallet) {
+  const set = getFollowedWhales();
+  const isNowFollowed = !set.has(wallet);
+  if (isNowFollowed) {
+    // Request notification permission the first time
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+    set.add(wallet);
+  } else {
+    set.delete(wallet);
+  }
+  saveFollowedWhales(set);
+  // Update all follow buttons currently visible for this wallet
+  document.querySelectorAll(`.whale-follow-btn[data-wallet="${wallet}"]`).forEach(btn => {
+    btn.textContent = isNowFollowed ? '🔔 Following' : '🔔 Follow Whale';
+    btn.classList.toggle('following', isNowFollowed);
+  });
+  return isNowFollowed;
+};
+
 window.openWhaleModal = function (whaleId, e) {
   if (e) e.stopPropagation();
 

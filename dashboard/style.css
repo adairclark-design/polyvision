@@ -858,6 +858,28 @@ button {
     color: var(--bg-primary);
 }
 
+/* Whale follow button — in the whale profile modal */
+.whale-follow-btn {
+    display: block;
+    width: 100%;
+    margin: 12px 0 4px;
+    padding: 11px 0;
+    background: var(--mint-dim);
+    color: var(--mint);
+    border: 1px solid rgba(0, 255, 163, 0.3);
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.2s, color 0.2s;
+}
+.whale-follow-btn:hover { background: rgba(0,255,163,0.2); }
+.whale-follow-btn.following {
+    background: var(--mint);
+    color: var(--bg-primary);
+}
+
 .btn-profile {
     background: transparent;
     color: var(--text-secondary);
