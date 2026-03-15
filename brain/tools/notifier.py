@@ -50,13 +50,20 @@ log = logging.getLogger(__name__)
 
 # ── Rate Limiting ─────────────────────────────────────────────────────────────
 def check_rate_limit(payload: dict, dry_run: bool = False) -> bool:
-    """Returns True if alert may be sent, False if rate-limited."""
+    """Returns True if alert may be sent, False if rate-limited.
+
+    Rate limit strategy:
+      WHALE tier  — 1 alert per market per 5 minutes (deduplicates same-market clusters)
+      STANDARD    — 1 alert per wallet per 10 minutes (prevents single-whale spam;
+                    each wallet has its OWN counter so one busy whale can't silence others)
+    """
     if dry_run:
         return True
     try:
         r = redis_lib.from_url(REDIS_URL, decode_responses=True, socket_timeout=3)
         tier      = payload.get("alert_tier", "STANDARD")
         market_id = payload.get("market_id", "unknown")
+        wallet    = payload.get("wallet_address", payload.get("maker_address", "unknown"))
 
         if tier == "WHALE":
             key = f"alert:sent:{market_id}"
@@ -65,19 +72,17 @@ def check_rate_limit(payload: dict, dry_run: bool = False) -> bool:
                 return False
             r.setex(key, RATE_LIMIT_WHALE_TTL, "1")
         else:
-            count_key = "alerts:standard:count"
-            count = int(r.get(count_key) or 0)
-            if count >= RATE_LIMIT_STANDARD_MAX:
-                log.info("Rate limited (STANDARD, hourly cap reached)")
+            # Per-wallet cooldown — each wallet gets its own 10-minute window
+            wallet_key = f"alert:wallet:{wallet[:20]}"
+            if r.get(wallet_key):
+                log.info(f"Rate limited (STANDARD, 10min cooldown): wallet {wallet[:10]}")
                 return False
-            pipe = r.pipeline()
-            pipe.incr(count_key)
-            pipe.expire(count_key, RATE_LIMIT_STANDARD_TTL)
-            pipe.execute()
+            r.setex(wallet_key, 600, "1")   # 10-minute per-wallet cooldown
         return True
     except Exception as e:
         log.warning(f"Rate limit check failed (allowing through): {e}")
         return True
+
 
 
 # ── Formatters ────────────────────────────────────────────────────────────────
