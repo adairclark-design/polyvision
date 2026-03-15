@@ -25,7 +25,7 @@ const RTDS_URL = process.env.POLY_PRIVATE_KEY ? 'wss://ws-subscriptions-clob.pol
 const CLOB_REST = 'https://clob.polymarket.com';
 const BRAIN_URL = process.env.BRAIN_URL || 'http://localhost:8000';
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379/0';
-const THRESHOLD = parseFloat(process.env.ALERT_THRESHOLD_STANDARD || '10000');
+const THRESHOLD = parseFloat(process.env.ALERT_THRESHOLD_STANDARD || '500'); // $500 minimum (whale filter in Brain signal engine)
 const HEALTH_PORT = 3001;
 const DEDUP_TTL = 7200;
 const MAX_BACKOFF_MS = 60_000;
@@ -134,38 +134,55 @@ async function drainBuffer() {
 async function catchUpViaRest() {
     log.info('Running REST poll for recent trades...');
     try {
-        const resp = await axios.get('https://gamma-api.polymarket.com/markets', {
-            params: { active: 'true', closed: 'false', limit: 20, _sort: 'volume24hr:desc' },
-            timeout: 10000,
+        // Fetch the most recent 500 trades across all markets.
+        // data-api returns them newest-first; we scan until we find qualifying ones.
+        const resp = await axios.get('https://data-api.polymarket.com/trades', {
+            params: { limit: 500 },
+            timeout: 15000,
         });
-        const markets = Array.isArray(resp.data) ? resp.data : (resp.data?.data || []);
+        const trades = Array.isArray(resp.data) ? resp.data : [];
         let caught = 0;
 
-        for (const market of markets.slice(0, 10)) {
-            const cid = market.conditionId || market.condition_id;
-            if (!cid) continue;
-            try {
-                const t = await axios.get('https://data-api.polymarket.com/trades', {
-                    params: { condition_id: cid, limit: 50 },
-                    timeout: 10000,
-                });
-                const trades = Array.isArray(t.data) ? t.data : [];
-                for (const raw of trades) {
-                    const event = normalizeTrade({ ...raw, market: cid });
-                    if (event.usd_value < THRESHOLD) continue;
-                    if (!(await isNewTrade(event.id))) continue;
-                    await forwardToBrain(event);
-                    lastEventTs = Date.now();
-                    totalEvents++;
-                    caught++;
-                }
-            } catch { /* per-market errors are non-fatal */ }
+        for (const raw of trades) {
+            // data-api has no usdcSize field — compute from size * price
+            const size  = parseFloat(raw.size  || 0);
+            const price = parseFloat(raw.price || 0);
+            const usdValue = size * price;
+
+            if (usdValue < THRESHOLD) continue;           // below threshold
+            const tradeId = raw.transactionHash || raw.id || `${raw.timestamp}-${raw.proxyWallet}`;
+            if (!(await isNewTrade(tradeId))) continue;   // already processed
+
+            const event = {
+                id:           tradeId,
+                market_id:    raw.conditionId || '',
+                market_title: raw.title || raw.market || 'Unknown Market',
+                outcome:      raw.outcome || (raw.side === 'BUY' ? 'YES' : 'NO'),
+                price,
+                size,
+                usd_value:    usdValue,
+                maker_address: raw.proxyWallet || '',
+                taker_address: '',
+                side:          (raw.side || 'BUY').toUpperCase(),
+                timestamp:     raw.timestamp
+                    ? new Date(raw.timestamp * 1000).toISOString()
+                    : new Date().toISOString(),
+                trader_pseudonym: raw.pseudonym || '',
+                trader_name:      raw.name || '',
+            };
+
+            await forwardToBrain(event);
+            lastEventTs = Date.now();
+            totalEvents++;
+            caught++;
+            log.info(`⚡ $${usdValue.toLocaleString('en-US', {maximumFractionDigits:0})} on "${event.market_title.slice(0,50)}" by ${raw.pseudonym || raw.proxyWallet?.slice(0,8)}`);
         }
-        log.info(`REST poll complete. ${caught} new qualifying trades forwarded.`);
+        log.info(`REST poll complete. ${trades.length} trades scanned, ${caught} qualifying (≥$${THRESHOLD.toLocaleString()}) forwarded.`);
     } catch (e) {
         log.error('REST poll failed:', e.message);
     }
 }
+
 
 // ── WebSocket Connection ──────────────────────────────────────────────────────
 function connect() {

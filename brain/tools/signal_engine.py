@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── Config ────────────────────────────────────────────────────────────────────
-THRESHOLD_STANDARD  = float(os.getenv("ALERT_THRESHOLD_STANDARD", "10000"))
+THRESHOLD_STANDARD  = float(os.getenv("ALERT_THRESHOLD_STANDARD", "500"))
 THRESHOLD_WHALE     = float(os.getenv("ALERT_THRESHOLD_WHALE", "50000"))
 COPY_TRADE_MIN_WR   = float(os.getenv("COPY_TRADE_MIN_WIN_RATE", "0.60"))
 DISCLAIMER          = "Whales can hedge. Following a trade is at your own risk."
