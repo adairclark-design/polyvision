@@ -950,57 +950,57 @@ window.toggleFollowWhale = async function(wallet) {
   const set = getFollowedWhales();
   const isNowFollowed = !set.has(wallet);
 
-  if (isNowFollowed) {
-    // 1. Request browser notification permission
-    if ('Notification' in window && Notification.permission === 'default') {
-      await Notification.requestPermission();
-    }
-    set.add(wallet);
-  } else {
-    set.delete(wallet);
-  }
+  // 1. Update localStorage immediately (synchronous)
+  if (isNowFollowed) set.add(wallet);
+  else               set.delete(wallet);
   saveFollowedWhales(set);
 
-  // 2. Sync with Railway backend for server-side OneSignal push
-  try {
-    // Get OneSignal player ID (SDK v16)
-    let playerId = null;
-    if (window.OneSignal) {
-      // v16: OneSignal.User.PushSubscription.id (may be null if not subscribed yet)
-      playerId = typeof OneSignal.User?.PushSubscription?.id === 'string'
-        ? OneSignal.User.PushSubscription.id
-        : await new Promise(res => {
-            OneSignal.push(() => {
-              OneSignal.getUserId(id => res(id));
-            });
-          });
-    }
-
-    if (playerId) {
-      const method = isNowFollowed ? 'POST' : 'DELETE';
-      const user   = typeof Clerk !== 'undefined' && Clerk.user ? Clerk.user.id : '';
-      await fetch(`${BRAIN_URL}/whale-follow`, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          wallet_address:      wallet,
-          onesignal_player_id: playerId,
-          clerk_user_id:       user,
-        }),
-      });
-      console.log(`[PV] Whale ${isNowFollowed ? 'follow' : 'unfollow'} synced to backend. Player: ${playerId.slice(0,12)}`);
-    } else {
-      console.warn('[PV] OneSignal player ID not available yet — server-side push not registered.');
-    }
-  } catch (err) {
-    console.warn('[PV] Could not sync whale follow to backend:', err.message);
-  }
-
-  // 3. Update all follow buttons visible for this wallet
+  // 2. Update button UI immediately — do NOT wait for async work
   document.querySelectorAll(`.whale-follow-btn[data-wallet="${wallet}"]`).forEach(btn => {
     btn.textContent = isNowFollowed ? '🔔 Following' : '🔔 Follow Whale';
     btn.classList.toggle('following', isNowFollowed);
   });
+
+  // 3. Request notification permission (async, non-blocking for UI)
+  if (isNowFollowed && 'Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+
+  // 4. Sync with Railway backend (fire-and-forget — never blocks UI)
+  (async () => {
+    try {
+      // Safely get OneSignal player ID with a 3s timeout to prevent hanging
+      let playerId = null;
+      if (window.OneSignal) {
+        playerId = OneSignal.User?.PushSubscription?.id || null;
+        // If not available yet (subscription pending), wait up to 3s
+        if (!playerId) {
+          playerId = await Promise.race([
+            new Promise(res => {
+              try { OneSignal.push(() => { OneSignal.getUserId(id => res(id || null)); }); }
+              catch { res(null); }
+            }),
+            new Promise(res => setTimeout(() => res(null), 3000)),  // 3s timeout
+          ]);
+        }
+      }
+
+      if (playerId) {
+        const user = typeof Clerk !== 'undefined' && Clerk.user ? Clerk.user.id : '';
+        await fetch(`${BRAIN_URL}/whale-follow`, {
+          method:  isNowFollowed ? 'POST' : 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ wallet_address: wallet, onesignal_player_id: playerId, clerk_user_id: user }),
+        });
+        console.log(`[PV] /whale-follow ${isNowFollowed ? 'POST' : 'DELETE'} OK player=${playerId.slice(0,12)}`);
+      } else {
+        console.warn('[PV] OneSignal player ID unavailable — server push not registered for this follow.');
+      }
+    } catch (err) {
+      console.warn('[PV] Backend whale-follow sync failed (non-fatal):', err.message);
+    }
+  })();
+
   return isNowFollowed;
 };
 
