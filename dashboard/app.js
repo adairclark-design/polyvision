@@ -610,7 +610,7 @@ function connectLiveFeed() {
             timestamp:           p.timestamp ? new Date(p.timestamp).getTime() : Date.now(),
             historical:          true,   // flag: don't animate or alert
             whale: {
-              id:        'real-whale',
+              id: p.wallet_address || `whale-${i}`,
               handle:    p.trader_handle || 'Unknown Whale',
               wallet:    p.wallet_address || '',
               avatar:    pickRandom(WHALES).avatar,
@@ -651,7 +651,7 @@ function connectLiveFeed() {
           timestamp: payload.timestamp ? new Date(payload.timestamp).getTime() : Date.now(),
           // Assign random aesthetic elements to real wallets
           whale: {
-            id: 'real-whale',
+            id: payload.wallet_address || `whale-${Date.now()}`,
             handle: payload.trader_handle || 'Unknown Whale',
             wallet: payload.wallet_address || '',
             avatar: pickRandom(WHALES).avatar,
