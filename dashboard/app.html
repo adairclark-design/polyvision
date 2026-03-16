@@ -312,10 +312,13 @@
                 <a href="#" class="nav-item" id="nav-mock">
                     <span class="nav-icon">🎯</span> Mock Portfolio
                 </a>
-                <a href="#" class="nav-item" id="nav-briefing">
+                <a href="#" class="nav-item" id="nav-briefing"
+                    onclick="if(!window.isPro()){event.preventDefault();event.stopImmediatePropagation();window.checkoutPro();return false;}">
                     <span class="nav-icon">📰</span> Morning Briefing
+                    <span class="lock-badge">PRO</span>
                 </a>
-                <a href="#" class="nav-item" id="nav-alerts">
+                <a href="#" class="nav-item" id="nav-alerts"
+                    onclick="if(!window.isPro()){event.preventDefault();event.stopImmediatePropagation();window.checkoutPro();return false;}">
                     <span class="nav-icon">🔔</span> Alerts
                     <span class="lock-badge">PRO</span>
                 </a>
