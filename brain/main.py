@@ -825,7 +825,7 @@ async def discord_oauth_start(clerk_user_id: str):
     """
     if not DISCORD_CLIENT_ID:
         raise HTTPException(503, 'Discord OAuth not configured (DISCORD_CLIENT_ID missing)')
-    brain_url     = os.getenv('BRAIN_URL', 'https://polyvision-brain-production.up.railway.app')
+    brain_url     = os.getenv('BRAIN_URL', 'https://polyvision-production.up.railway.app')
     redirect_uri  = f'{brain_url}/discord/oauth/callback'
     auth_url = (
         f'https://discord.com/api/oauth2/authorize'
@@ -851,7 +851,7 @@ async def discord_oauth_callback(code: str = '', state: str = '', error: str = '
         return HTMLResponse('<script>window.close();</script><p>Discord link cancelled.</p>', status_code=200)
 
     clerk_user_id = state   # passed through as OAuth state
-    brain_url     = os.getenv('BRAIN_URL', 'https://polyvision-brain-production.up.railway.app')
+    brain_url     = os.getenv('BRAIN_URL', 'https://polyvision-production.up.railway.app')
     redirect_uri  = f'{brain_url}/discord/oauth/callback'
 
     discord_user_id = exchange_code_for_user_id(code, redirect_uri)
