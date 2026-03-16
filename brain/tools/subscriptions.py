@@ -39,6 +39,7 @@ def init_db():
                     status              TEXT DEFAULT 'inactive',
                     plan                TEXT DEFAULT 'free',
                     current_period_end  TIMESTAMPTZ,
+                    discord_user_id     TEXT,
                     created_at          TIMESTAMPTZ DEFAULT NOW(),
                     updated_at          TIMESTAMPTZ DEFAULT NOW()
                 );
@@ -47,8 +48,13 @@ def init_db():
                 CREATE INDEX IF NOT EXISTS idx_subscriptions_customer
                     ON subscriptions(stripe_customer_id);
             """)
+            # Idempotent: add discord_user_id column if it didn't exist yet
+            cur.execute("""
+                ALTER TABLE subscriptions
+                    ADD COLUMN IF NOT EXISTS discord_user_id TEXT;
+            """)
         conn.commit()
-        log.info('Subscriptions table ready.')
+        log.info('Subscriptions table ready (with discord_user_id).')
     finally:
         conn.close()
 
@@ -113,10 +119,57 @@ def get_subscription(clerk_user_id: str) -> dict:
             'plan':                 row['plan'],
             'status':               row['status'],
             'current_period_end':   exp.isoformat() if exp else None,
+            'discord_user_id':      row.get('discord_user_id'),
         }
     except Exception as e:
         log.warning(f'get_subscription failed: {e}')
         return defaults
+
+
+def get_discord_user_id(clerk_user_id: str) -> str | None:
+    """Look up the Discord user ID linked to a Clerk user."""
+    if not DATABASE_URL or not clerk_user_id:
+        return None
+    try:
+        conn = _connect()
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT discord_user_id FROM subscriptions WHERE clerk_user_id = %s LIMIT 1",
+                (clerk_user_id,)
+            )
+            row = cur.fetchone()
+        conn.close()
+        return row[0] if row else None
+    except Exception as e:
+        log.warning(f'get_discord_user_id failed: {e}')
+        return None
+
+
+def link_discord(clerk_user_id: str, discord_user_id: str) -> bool:
+    """
+    Store a Discord user ID against a Clerk user.
+    Creates a stub subscription row if one doesn't exist yet
+    (so OAuth can happen before or after subscribing).
+    """
+    if not DATABASE_URL:
+        return False
+    try:
+        conn = _connect()
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO subscriptions (clerk_user_id, discord_user_id)
+                VALUES (%s, %s)
+                ON CONFLICT (clerk_user_id) DO UPDATE
+                    SET discord_user_id = EXCLUDED.discord_user_id,
+                        updated_at = NOW()
+            """, (clerk_user_id, discord_user_id))
+        conn.commit()
+        conn.close()
+        log.info(f'Discord linked: {clerk_user_id} → {discord_user_id}')
+        return True
+    except Exception as e:
+        log.error(f'link_discord failed: {e}')
+        return False
 
 
 def upsert_subscription(clerk_user_id: str, stripe_customer_id: str,

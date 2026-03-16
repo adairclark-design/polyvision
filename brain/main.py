@@ -62,6 +62,10 @@ from market_resolver  import (
 from subscriptions import (
     init_db        as init_subscriptions_db,
     is_pro, get_subscription, upsert_subscription, cancel_subscription,
+    link_discord, get_discord_user_id,
+)
+from discord_roles import (
+    grant_pro_role, revoke_pro_role, exchange_code_for_user_id,
 )
 from price_tracker import (
     init_db        as init_price_tracker_db,
@@ -762,25 +766,122 @@ async def stripe_webhook(request: Request):
                     period_end_ts=period_end,
                 )
                 log.info(f'PRO activated for clerk user: {clerk_user_id}')
+                # Grant Discord role if user has linked their account
+                discord_uid = get_discord_user_id(clerk_user_id)
+                if discord_uid:
+                    grant_pro_role(discord_uid)
             except Exception as e:
                 log.error(f'Failed to upsert subscription for {clerk_user_id}: {e}')
 
     elif etype in ('customer.subscription.deleted', 'customer.subscription.updated'):
         sub    = data
         status = sub['status']   # 'active','past_due','cancelled','unpaid'
+        clerk_uid = sub.get('metadata', {}).get('clerk_user_id', '')
         upsert_subscription(
-            clerk_user_id=sub.get('metadata', {}).get('clerk_user_id', ''),
+            clerk_user_id=clerk_uid,
             stripe_customer_id=sub['customer'],
             stripe_sub_id=sub['id'],
             status=status,
             period_end_ts=sub.get('current_period_end'),
         )
+        # Revoke Discord role when subscription is NOT active
+        if status != 'active' and clerk_uid:
+            discord_uid = get_discord_user_id(clerk_uid)
+            if discord_uid:
+                revoke_pro_role(discord_uid)
 
     elif etype == 'invoice.payment_failed':
         cancel_subscription(data['customer'])
-        log.warning(f'Payment failed — downgraded customer: {data["customer"]}')
+        log.warning(f'Payment failed \u2014 downgraded customer: {data["customer"]}')
+        # Revoke Discord role on payment failure — look up by Stripe customer ID
+        try:
+            conn = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT clerk_user_id, discord_user_id FROM subscriptions WHERE stripe_customer_id = %s LIMIT 1",
+                    (data['customer'],)
+                )
+                row = cur.fetchone()
+            conn.close()
+            if row and row[1]:  # discord_user_id present
+                revoke_pro_role(row[1])
+        except Exception as e:
+            log.warning(f'Discord revoke on payment failure: {e}')
 
     return {'received': True}
+
+
+# ── Discord OAuth Routes ───────────────────────────────────────────────────────
+DISCORD_CLIENT_ID     = os.getenv('DISCORD_CLIENT_ID', '')
+DISCORD_CLIENT_SECRET = os.getenv('DISCORD_CLIENT_SECRET', '')
+DISCORD_INVITE_URL    = os.getenv('DISCORD_INVITE_URL', '')   # public invite link to the server
+
+
+@app.get('/discord/oauth/start')
+async def discord_oauth_start(clerk_user_id: str):
+    """
+    Redirect the user to Discord's OAuth2 authorization page.
+    clerk_user_id is passed as 'state' so we can match it in the callback.
+    """
+    if not DISCORD_CLIENT_ID:
+        raise HTTPException(503, 'Discord OAuth not configured (DISCORD_CLIENT_ID missing)')
+    brain_url     = os.getenv('BRAIN_URL', 'https://polyvision-brain-production.up.railway.app')
+    redirect_uri  = f'{brain_url}/discord/oauth/callback'
+    auth_url = (
+        f'https://discord.com/api/oauth2/authorize'
+        f'?client_id={DISCORD_CLIENT_ID}'
+        f'&redirect_uri={redirect_uri}'
+        f'&response_type=code'
+        f'&scope=identify'
+        f'&state={clerk_user_id}'
+    )
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=auth_url)
+
+
+@app.get('/discord/oauth/callback')
+async def discord_oauth_callback(code: str = '', state: str = '', error: str = ''):
+    """
+    Discord redirects here after the user authorises.
+    Exchanges the code for a user ID, stores it, and grants the PRO role if applicable.
+    """
+    from fastapi.responses import HTMLResponse
+
+    if error or not code:
+        return HTMLResponse('<script>window.close();</script><p>Discord link cancelled.</p>', status_code=200)
+
+    clerk_user_id = state   # passed through as OAuth state
+    brain_url     = os.getenv('BRAIN_URL', 'https://polyvision-brain-production.up.railway.app')
+    redirect_uri  = f'{brain_url}/discord/oauth/callback'
+
+    discord_user_id = exchange_code_for_user_id(code, redirect_uri)
+    if not discord_user_id:
+        return HTMLResponse('<p>Failed to link Discord account. Please try again.</p>', status_code=500)
+
+    # Store the link
+    link_discord(clerk_user_id, discord_user_id)
+
+    # If user is already PRO, grant the role immediately
+    if is_pro(clerk_user_id):
+        grant_pro_role(discord_user_id)
+
+    # Close the popup and notify the parent window
+    invite_html = f'<p>Join the server: <a href="{DISCORD_INVITE_URL}" target="_blank">Click here</a></p>' if DISCORD_INVITE_URL else ''
+    return HTMLResponse(f"""
+    <html><head><title>Discord Linked</title></head>
+    <body style="font-family:sans-serif;text-align:center;padding:40px;background:#1a1a2e;color:#fff">
+      <h2>\u2705 Discord Linked Successfully!</h2>
+      <p>Your PolyVision PRO Discord access is now active.</p>
+      {invite_html}
+      <p style="margin-top:24px;font-size:12px;color:#666">You can close this window.</p>
+      <script>
+        if (window.opener) {{
+          window.opener.postMessage({{ type: 'discord_linked', discord_user_id: '{discord_user_id}' }}, '*');
+          setTimeout(() => window.close(), 2000);
+        }}
+      </script>
+    </body></html>
+    """, status_code=200)
 
 
 @app.get('/subscription/status')

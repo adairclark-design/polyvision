@@ -134,9 +134,12 @@ async function loadProStatus() {
     if (resp.ok) {
       const data = await resp.json();
       state.isProUser = data.is_pro === true;
+      state.discordLinked = !!data.discord_user_id;
       // Show/hide HUD upgrade button based on tier
       const upgradeBtn = $('btnHudUpgrade');
       if (upgradeBtn) upgradeBtn.style.display = state.isProUser ? 'none' : '';
+      // Render Discord link button if PRO
+      renderDiscordLinkButton();
       // Show welcome toast if returning from Stripe
       const params = new URLSearchParams(location.search);
       if (params.get('upgrade') === 'success' && state.isProUser) {
@@ -144,6 +147,14 @@ async function loadProStatus() {
         showToast({ tier: 'WHALE', whale: { handle: '🎉 Welcome to PolyVision PRO!' },
           market: 'All PRO features are now unlocked. Your feed just expanded to 50 events.',
           outcome: 'YES', usdValue: 0, timestamp: Date.now() });
+        // Nudge to link Discord after a short delay
+        if (!state.discordLinked) {
+          setTimeout(() => {
+            showToast({ tier: 'STANDARD', whale: { handle: '💙 Link Your Discord' },
+              market: 'Connect Discord to get exclusive PRO channel access with your subscription.',
+              outcome: 'YES', usdValue: 0, timestamp: Date.now() });
+          }, 4000);
+        }
       }
     }
   } catch (_) {
@@ -151,6 +162,36 @@ async function loadProStatus() {
     state.isProUser = !!(window.Clerk?.user?.publicMetadata?.tier === 'PRO');
   }
 }
+
+// ── Discord OAuth Link UI ─────────────────────────────────────────────────────
+function renderDiscordLinkButton() {
+  const container = $('discordLinkContainer');
+  if (!container) return;
+  if (!state.isProUser) { container.style.display = 'none'; return; }
+  container.style.display = '';
+  container.innerHTML = state.discordLinked
+    ? `<div class="discord-linked">💙 Discord Linked ✅</div>`
+    : `<button class="btn-discord-link" onclick="openDiscordOAuth()">💙 Link Discord — Get PRO Channel Access</button>`;
+}
+
+window.openDiscordOAuth = function () {
+  const user = window.Clerk?.user;
+  if (!user) return;
+  const url = `${BRAIN_URL}/discord/oauth/start?clerk_user_id=${encodeURIComponent(user.id)}`;
+  const popup = window.open(url, 'discord_oauth', 'width=500,height=700,scrollbars=yes');
+  if (!popup) alert('Please allow popups to link your Discord account.');
+};
+
+// Listen for the callback popup to confirm Discord was linked
+window.addEventListener('message', (event) => {
+  if (event.data?.type === 'discord_linked') {
+    state.discordLinked = true;
+    renderDiscordLinkButton();
+    showToast({ tier: 'WHALE', whale: { handle: '💙 Discord Linked!' },
+      market: 'PRO channel access is now active. Check your Discord server.',
+      outcome: 'YES', usdValue: 0, timestamp: Date.now() });
+  }
+});
 
 window.checkoutPro = async function () {
   // Show the upgrade modal using the CSS class (modal-overlay.open) — NOT style.display
