@@ -214,7 +214,16 @@ def send_discord(embed: dict, webhook_override: str = ""):
     """
     url = webhook_override or DISCORD_WEBHOOK_URL
     if url:
-        r = requests.post(url, json=embed, timeout=10)
+        # Wrap embed in a payload that overrides the bot display name + avatar
+        payload = {
+            "username":   "PolyVision Brain",
+            "avatar_url": "https://polyvision.app/assets/icon-192.png",
+            "embeds":     embed.get("embeds", [embed]) if "embeds" not in embed else embed["embeds"],
+        }
+        # Pass through any top-level content field (e.g. @here mentions)
+        if "content" in embed:
+            payload["content"] = embed["content"]
+        r = requests.post(url, json=payload, timeout=10)
         r.raise_for_status()
         return
     if not DISCORD_BOT_TOKEN or not DISCORD_CHANNEL_ID:
