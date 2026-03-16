@@ -134,6 +134,9 @@ async function loadProStatus() {
     if (resp.ok) {
       const data = await resp.json();
       state.isProUser = data.is_pro === true;
+      // Show/hide HUD upgrade button based on tier
+      const upgradeBtn = $('btnHudUpgrade');
+      if (upgradeBtn) upgradeBtn.style.display = state.isProUser ? 'none' : '';
       // Show welcome toast if returning from Stripe
       const params = new URLSearchParams(location.search);
       if (params.get('upgrade') === 'success' && state.isProUser) {
@@ -516,7 +519,7 @@ function renderLeaderboard() {
 
   const ranked = Object.values(walletMap)
     .sort((a, b) => b.totalVolume - a.totalVolume)
-    .slice(0, window.isPro() ? 20 : 5);
+    .slice(0, window.isPro() ? 20 : 3);
 
   if (!ranked.length) {
     whaleCardsEl.innerHTML = `
@@ -562,12 +565,41 @@ function renderLeaderboard() {
     </div>`;
   }).join('');
 
-  if (!pro && Object.keys(walletMap).length > 5) {
-    html += `<div class="upgrade-banner" style="margin-top:8px">
-      <h3>🔒 ${Object.keys(walletMap).length - 5} more whales tracked</h3>
-      <p>Upgrade to Pro to see the full Leaderboard.</p>
-      <button class="btn-upgrade" onclick="checkoutPro()" style="margin-top:10px;width:100%">Upgrade to Pro</button>
-    </div>`;
+  if (!pro) {
+    const totalTracked = Object.keys(walletMap).length;
+    const hiddenCount  = Math.max(0, totalTracked - 3);
+    // Show 3 blurred ghost cards so free users see exactly what they're missing
+    const ghostCount = Math.min(hiddenCount, 3);  // preview up to 3 locked slots
+    for (let g = 0; g < ghostCount; g++) {
+      html += `
+      <div class="whale-card" style="position:relative;overflow:hidden;cursor:pointer" onclick="checkoutPro()">
+        <div style="filter:blur(6px);pointer-events:none;opacity:0.4">
+          <div class="whale-card-top">
+            <span class="whale-rank">#${4 + g}</span>
+            <div class="whale-info">
+              <div class="whale-handle">██████████████</div>
+              <div class="whale-badge">🔥 <span>$????? vol · ? trades</span></div>
+            </div>
+          </div>
+          <div class="whale-stats-row">
+            <div class="ws"><span class="ws-label">Win Rate</span><span class="ws-value" style="color:var(--mint)">??%</span></div>
+            <div class="ws"><span class="ws-label">30D ROI</span><span class="ws-value" style="color:var(--mint)">+?.?%</span></div>
+            <div class="ws"><span class="ws-label">Badge</span><span class="ws-value">Shark</span></div>
+          </div>
+        </div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px">
+          <span style="font-size:22px">🔒</span>
+          <span style="font-size:11px;color:var(--text-muted);font-weight:600">PRO Only</span>
+        </div>
+      </div>`;
+    }
+    if (hiddenCount > 0) {
+      html += `<div class="upgrade-banner" style="margin-top:8px">
+        <h3>🔒 ${hiddenCount} more whale${hiddenCount > 1 ? 's' : ''} tracked</h3>
+        <p>Upgrade to PRO to unlock the full leaderboard.</p>
+        <button class="btn-upgrade" onclick="checkoutPro()" style="margin-top:10px;width:100%">🚀 Upgrade to PRO</button>
+      </div>`;
+    }
   }
 
   whaleCardsEl.innerHTML = html;
@@ -592,7 +624,7 @@ function connectLiveFeed() {
 
       // ── Handle history burst on connect ──────────────────────────────────
       if (payload.type === 'history' && Array.isArray(payload.events)) {
-        const maxEvents = window.isPro() ? 50 : 10;
+        const maxEvents = window.isPro() ? 50 : 5;
         let loaded = 0;
         for (const p of payload.events) {
           if (!p || (!p.alert_tier && !p.alert_id)) continue;
@@ -664,7 +696,7 @@ function connectLiveFeed() {
         };
 
         state.events.unshift(ev);
-        const maxEvents = window.isPro() ? 50 : 10;
+        const maxEvents = window.isPro() ? 50 : 5;
         if (state.events.length > maxEvents) state.events.pop();
 
         // Generate chips NOW — after ev is in state.events so frequency counts work
@@ -832,6 +864,13 @@ const paperTradeIds = {};
 
 window.toggleFollow = async function (eventId, e) {
   e.stopPropagation();
+
+  // PRO gate: free users see the upgrade modal instead
+  if (!window.isPro()) {
+    window.checkoutPro();
+    return;
+  }
+
   const ev = state.events.find(x => x.id === eventId);
   if (!ev) return;
 
@@ -2152,6 +2191,11 @@ function closePortfolio() {
 
 // ── Morning Alpha Briefing Panel ──────────────────────────────────────────────
 window.openBriefing = async function () {
+  // PRO gate: free users see the upgrade modal
+  if (!window.isPro()) {
+    window.checkoutPro();
+    return;
+  }
   $('briefingOverlay').classList.add('active');
   // Try to load cached briefing immediately
   try {
@@ -2651,6 +2695,11 @@ async function syncRulesFromBackend() {
 }
 
 window.openAlerts = function () {
+  // PRO gate: free users see the upgrade modal
+  if (!window.isPro()) {
+    window.checkoutPro();
+    return;
+  }
   $('alertsOverlay').classList.add('active');
   // Pre-fill email from last save
   const savedEmail = localStorage.getItem(ALERTS_EMAIL) || '';
