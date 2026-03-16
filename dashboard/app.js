@@ -169,12 +169,24 @@ window.startStripeCheckout = async function () {
     });
     if (!resp.ok) throw new Error(await resp.text());
     const { url } = await resp.json();
+    // Clear cached PRO status so it's re-checked fresh when user returns via back button
+    state.isProUser = undefined;
     window.location.href = url;
   } catch (err) {
     console.error('Checkout error:', err);
     alert('Could not start checkout. Please try again.');
   }
 };
+
+// Re-check PRO status every time the page is restored from bfcache (e.g. Stripe back-nav)
+// This prevents stale state from bypassing PRO gates after the user clicks Back from Stripe.
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted) {
+    // Page was restored from bfcache — reset PRO state and re-validate
+    state.isProUser = undefined;
+    loadProStatus();
+  }
+});
 
 window.closeProModal = function () {
   $('proUpgradeOverlay').classList.remove('open');
