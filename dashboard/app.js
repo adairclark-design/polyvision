@@ -153,8 +153,8 @@ async function loadProStatus() {
 }
 
 window.checkoutPro = async function () {
-  // Show the upgrade modal first
-  $('proUpgradeOverlay').style.display = 'flex';
+  // Show the upgrade modal using the CSS class (modal-overlay.open) — NOT style.display
+  $('proUpgradeOverlay').classList.add('open');
 };
 
 window.startStripeCheckout = async function () {
@@ -177,7 +177,7 @@ window.startStripeCheckout = async function () {
 };
 
 window.closeProModal = function () {
-  $('proUpgradeOverlay').style.display = 'none';
+  $('proUpgradeOverlay').classList.remove('open');
 };
 
 // Wire the "Go PRO" button inside the modal to the new checkout flow
