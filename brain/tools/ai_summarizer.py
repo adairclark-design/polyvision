@@ -82,13 +82,29 @@ def build_prompt(payload: dict, extra_instruction: str = "", live_context: str =
     usd      = payload.get("usd_value", 0)
     copy     = payload.get("copy_trade_recommended", False)
 
-    win_str = f"{win_rate:.0%}" if win_rate is not None else "N/A"
+    total_trades = payload.get("wallet_total_trades")
+    if win_rate is None:
+        win_str = "TBD"
+    elif win_rate == 0.0 and (not total_trades or int(total_trades) < 5):
+        win_str = "TBD"
+    else:
+        win_str = f"{win_rate:.0%}"
     roi_str = f"{roi_30d:+.1%}" if roi_30d is not None else "N/A"
+
+    # Format price as probability percentage (0.72 → 72%, 1.0 → ~100%)
+    if price is None or float(price) <= 0:
+        price_str = "N/A"
+    elif float(price) >= 0.99:
+        price_str = "~100%"
+    elif float(price) <= 0.01:
+        price_str = "<1%"
+    else:
+        price_str = f"{float(price):.0%}"
 
     user_msg = (
         f"Trader: {handle} (Win Rate: {win_str}, 30d ROI: {roi_str})\n"
         f"Market: \"{market}\"\n"
-        f"Position: {outcome} @ ${price:.2f} implied probability\n"
+        f"Position: {outcome} @ {price_str} implied probability\n"
         f"Size: ${usd:,.0f} USD\n"
         f"Copy Trade Recommended: {'Yes' if copy else 'No'}"
     )

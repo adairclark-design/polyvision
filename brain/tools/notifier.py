@@ -101,6 +101,42 @@ def check_rate_limit(payload: dict, dry_run: bool = False) -> bool:
 
 
 # ── Formatters ────────────────────────────────────────────────────────────────
+def _fmt_price(price) -> str:
+    """
+    Convert a Polymarket price (0–1 float probability) to a display string.
+    $1.00 = 100% certainty is confusing — show as % instead.
+    """
+    try:
+        p = float(price)
+    except (TypeError, ValueError):
+        return "N/A"
+    if p <= 0:
+        return "N/A"
+    if p >= 0.99:
+        return "~100%"
+    if p <= 0.01:
+        return "<1%"
+    return f"{p:.0%}"
+
+
+def _fmt_win_rate(wr, total_trades=None) -> str:
+    """
+    Format a win rate with proper TBD handling.
+    Shows TBD when:
+      - No data (None)
+      - win_rate is 0.0 with fewer than 5 trades (indistinguishable from no data)
+    Shows 0% only when there are ≥5 trades to make it meaningful.
+    """
+    if wr is None:
+        return "TBD"
+    if wr == 0.0:
+        try:
+            trades = int(total_trades or 0)
+        except (TypeError, ValueError):
+            trades = 0
+        return "0%" if trades >= 5 else "TBD"
+    return f"{wr:.0%}"
+
 def format_push(payload: dict) -> dict:
     tier    = payload.get("alert_tier", "STANDARD")
     handle  = payload.get("trader_handle", "Unknown Trader")
@@ -123,12 +159,13 @@ def format_discord_embed(payload: dict) -> dict:
     price   = payload.get("price", 0)
     usd     = payload.get("usd_value", 0)
     wr      = payload.get("wallet_win_rate")
+    trades  = payload.get("wallet_total_trades")
     copy    = payload.get("copy_trade_recommended", False)
     summary = payload.get("ai_summary", "")
 
     # Green for YES, Red for NO
     color = 0x00C851 if str(outcome).lower() == "yes" else 0xFF4444
-    wr_str = f"{wr:.0%}" if wr is not None else "N/A"
+    wr_str = _fmt_win_rate(wr, trades)
 
     return {
         "embeds": [{
@@ -136,7 +173,7 @@ def format_discord_embed(payload: dict) -> dict:
             "color":       color,
             "description": summary,
             "fields": [
-                {"name": "Position",    "value": f"{outcome} @ ${price:.2f}",      "inline": True},
+                {"name": "Position",    "value": f"{outcome} @ {_fmt_price(price)}", "inline": True},
                 {"name": "Size",        "value": f"${usd:,.0f} USD",               "inline": True},
                 {"name": "Win Rate",    "value": wr_str,                            "inline": True},
                 {"name": "Copy Trade",  "value": "✅ Recommended" if copy else "⛔ Not Recommended", "inline": True},
@@ -154,17 +191,18 @@ def format_telegram(payload: dict) -> str:
     price   = payload.get("price", 0)
     usd     = payload.get("usd_value", 0)
     wr      = payload.get("wallet_win_rate")
+    trades  = payload.get("wallet_total_trades")
     copy    = payload.get("copy_trade_recommended", False)
     summary = payload.get("ai_summary", "")
 
     emoji  = "🐋" if tier == "WHALE" else "🔵"
-    wr_str = f"{wr:.0%}" if wr is not None else "N/A"
+    wr_str = _fmt_win_rate(wr, trades)
     copy_str = "✅ Recommended" if copy else "⛔ Not Recommended"
 
     return (
         f"{emoji} *{handle}* — {tier} ALERT\n"
         f"📊 Market: {market}\n"
-        f"🎯 Position: {outcome} @ ${price:.2f}\n"
+        f"🎯 Position: {outcome} @ {_fmt_price(price)}\n"
         f"💰 Size: ${usd:,.0f}\n"
         f"📈 Win Rate: {wr_str}\n"
         f"📋 Copy Trade: {copy_str}\n"
