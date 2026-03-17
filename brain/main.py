@@ -854,9 +854,17 @@ async def discord_oauth_callback(code: str = '', state: str = '', error: str = '
     brain_url     = os.getenv('BRAIN_URL', 'https://polyvision-production.up.railway.app')
     redirect_uri  = f'{brain_url}/discord/oauth/callback'
 
-    discord_user_id = exchange_code_for_user_id(code, redirect_uri)
+    discord_user_id, discord_error = exchange_code_for_user_id(code, redirect_uri)
     if not discord_user_id:
-        return HTMLResponse('<p>Failed to link Discord account. Please try again.</p>', status_code=500)
+        return HTMLResponse(
+            f'<html><body style="font-family:monospace;padding:20px;background:#1a1a2e;color:#ff6b6b">'
+            f'<h3>Discord Link Failed</h3>'
+            f'<p><strong>Error:</strong> {discord_error}</p>'
+            f'<p style="color:#888;font-size:12px">redirect_uri sent: {redirect_uri}</p>'
+            f'<p style="color:#888;font-size:12px">client_id used: {os.getenv("DISCORD_CLIENT_ID","(not set)")}</p>'
+            f'</body></html>',
+            status_code=500
+        )
 
     # Store the link
     link_discord(clerk_user_id, discord_user_id)
