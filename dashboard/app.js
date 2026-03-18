@@ -1769,24 +1769,38 @@ window.exportPortfolioCSV = async function() {
 
 
 // ── Startup (Clerk Auth Wrapper) ─────────────────────────────────────────────
+// PERMANENT FIX (2026-03-18):
+//   Previously used mountSignIn() with afterSignInUrl / afterSignUpUrl params
+//   that were dropped in Clerk v5 — causing a page reload instead of navigation
+//   after sign-in. This is why the fix kept breaking on CDN version bumps.
+//
+//   Solution: redirectToSignIn() is a first-class, stable Clerk API that works
+//   in ALL Clerk v4 and v5 versions. Unauthenticated users are sent to Clerk's
+//   hosted sign-in page and returned to /app after auth. No embedded widget needed.
 async function initAuth() {
   try {
     await window.Clerk.load();
     if (window.Clerk.user) {
-      // User is authenticated
+      // ✅ Authenticated — hide loading overlay, mount user button, start app
       document.getElementById('authOverlay').style.display = 'none';
       window.Clerk.mountUserButton(document.getElementById('clerk-user-button'));
-
       initApp();
     } else {
-      // User is not authenticated
-      const signInDiv = document.getElementById('clerk-sign-in');
-      window.Clerk.mountSignIn(signInDiv);
+      // 🔐 Not authenticated — redirect to Clerk hosted sign-in page.
+      // After sign-in Clerk returns the user to /app automatically.
+      window.Clerk.redirectToSignIn({
+        afterSignInUrl: window.location.origin + '/app',
+        afterSignUpUrl: window.location.origin + '/app',
+        // v5 canonical params (safe no-ops in v4):
+        signInFallbackRedirectUrl: window.location.origin + '/app',
+        signUpFallbackRedirectUrl: window.location.origin + '/app',
+      });
     }
   } catch (err) {
-    console.error('Error loading Clerk:', err);
+    console.error('[PolyVision] Clerk auth error:', err);
+    // Last-resort fallback so the page is never permanently blocked
     document.getElementById('authOverlay').style.display = 'none';
-    initApp(); // fallback if Clerk fails
+    initApp();
   }
 }
 
@@ -1823,23 +1837,26 @@ function initApp() {
   }
 }
 
-window.addEventListener('load', () => {
-  const checkClerk = setInterval(() => {
-    if (window.Clerk) {
-      clearInterval(checkClerk);
-      initAuth();
-    }
-  }, 100);
+// Use DOMContentLoaded — Clerk script is NOT async so it executes before this.
+// Official pattern: check window.Clerk immediately, then listen for clerk:loaded.
+window.addEventListener('DOMContentLoaded', () => {
+  if (window.Clerk) {
+    // Clerk is already ready (synchronous load completed)
+    initAuth();
+  } else {
+    // Wait for Clerk's own ready event — no polling needed
+    window.addEventListener('clerk:loaded', initAuth, { once: true });
 
-  // Fallback after 5 seconds
-  setTimeout(() => {
-    if (!window.Clerk) {
-      clearInterval(checkClerk);
-      console.error('Clerk script failed to load after 5 seconds');
-      document.getElementById('authOverlay').style.display = 'none';
-      initApp();
-    }
-  }, 5000);
+    // Safety net: if Clerk never fires after 8 seconds (blocked CDN, ad-blocker)
+    setTimeout(() => {
+      if (!window.Clerk) {
+        console.error('[PolyVision] Clerk SDK failed to load after 8s — degrading gracefully');
+        const overlay = document.getElementById('authOverlay');
+        if (overlay) overlay.style.display = 'none';
+        initApp();
+      }
+    }, 8000);
+  }
 
   // ── PWA Service Worker Registration ────────────────────────────────────
   if ('serviceWorker' in navigator) {
