@@ -1782,8 +1782,8 @@ window.exportPortfolioCSV = async function() {
 async function initAuth() {
   try {
     await window.Clerk.load({
-      afterSignInUrl: '/app.html',
-      afterSignUpUrl: '/app.html',
+      afterSignInUrl: '/app/'',
+      afterSignUpUrl: '/app/'',
     });
 
 
@@ -1825,7 +1825,7 @@ async function initAuth() {
           <div style="font-size:3rem;margin-bottom:1rem">🐋</div>
           <h2 style="margin:0 0 8px">PolyVision</h2>
           <p style="color:#8b949e;font-size:14px;margin-bottom:24px">Authentication unavailable. Please sign in to continue.</p>
-          <a href="https://calm-skink-66.clerk.accounts.dev/sign-in?redirect_url=https%3A%2F%2Fpolyvision.app%2Fapp.html"
+          <a href="https://calm-skink-66.clerk.accounts.dev/sign-in?redirect_url=https%3A%2F%2Fpolyvision.app%2Fapp%2F"
              style="display:inline-block;padding:12px 28px;background:#00ffa3;color:#000;border-radius:8px;font-weight:700;text-decoration:none;font-size:15px">
             Sign In
           </a>
