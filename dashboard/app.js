@@ -1764,17 +1764,31 @@ window.exportPortfolioCSV = async function() {
 
 
 // ── Startup (Clerk Auth Wrapper) ─────────────────────────────────────────────
-// PERMANENT FIX (2026-03-18):
-//   Previously used mountSignIn() with afterSignInUrl / afterSignUpUrl params
-//   that were dropped in Clerk v5 — causing a page reload instead of navigation
-//   after sign-in. This is why the fix kept breaking on CDN version bumps.
+// PERMANENT FIX (2026-03-19):
 //
-//   Solution: redirectToSignIn() is a first-class, stable Clerk API that works
-//   in ALL Clerk v4 and v5 versions. Unauthenticated users are sent to Clerk's
-//   hosted sign-in page and returned to /app after auth. No embedded widget needed.
+// Two bugs were causing the recurring "Sign In refreshes the page" issue:
+//
+// BUG 1 — Cloudflare caches app.html:
+//   Fixed by dashboard/_headers: `Cache-Control: no-cache` on app.html.
+//   Ensures every visit loads the current app.js version, not a stale one.
+//
+// BUG 2 — Clerk.load() with no signInUrl reads Clerk dashboard setting:
+//   The Clerk dashboard has 'Sign-in URL' = /sign-in by default.
+//   /sign-in doesn't exist → Cloudflare serves index.html (landing page).
+//   To the user: looks like the page just refreshed.
+//   Fixed by passing signInUrl: '/app' to Clerk.load() directly in code.
+//   This overrides the dashboard setting permanently — nothing to misconfigure.
 async function initAuth() {
   try {
-    await window.Clerk.load();
+    await window.Clerk.load({
+      // Override Clerk dashboard routing settings in code.
+      // This is the ONLY reliable way to prevent Clerk from redirecting
+      // to /sign-in (which doesn't exist) and causing the page-refresh symptom.
+      signInUrl:      '/app',
+      signUpUrl:      '/app',
+      afterSignInUrl: '/app',
+      afterSignUpUrl: '/app',
+    });
     if (window.Clerk.user) {
       // ✅ Authenticated — hide loading overlay, mount user button, start app
       document.getElementById('authOverlay').style.display = 'none';
