@@ -1781,11 +1781,10 @@ window.exportPortfolioCSV = async function() {
 async function initAuth() {
   try {
     await window.Clerk.load({
-      // Override Clerk dashboard routing settings in code.
-      // This is the ONLY reliable way to prevent Clerk from redirecting
-      // to /sign-in (which doesn't exist) and causing the page-refresh symptom.
-      signInUrl:      '/app',
-      signUpUrl:      '/app',
+      // Only set after-auth destinations. Do NOT set signInUrl here —
+      // if signInUrl points to /app (the same page), Clerk creates an
+      // infinite redirect loop: unauthenticated user → /app → openSignIn
+      // → redirects to signInUrl (/app) → repeat → ERR_TOO_MANY_REDIRECTS.
       afterSignInUrl: '/app',
       afterSignUpUrl: '/app',
     });
