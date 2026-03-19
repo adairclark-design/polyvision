@@ -602,39 +602,10 @@ async def health():
 
 
 @app.post('/webhooks/stripe')
-async def stripe_webhook(request: Request):
-    """Listens for Stripe 'checkout.session.completed' and upgrades the Clerk user to PRO."""
-    payload = await request.body()
-    sig_header = request.headers.get('stripe-signature', '')
-    
-    if not STRIPE_WEBHOOK_SECRET:
-        log.warning("Stripe webhook received but STRIPE_WEBHOOK_SECRET is not configured.")
-        return {"status": "ignored"}
+async def stripe_webhook_legacy(request: Request):
+    """Legacy alias — forwards to the canonical /stripe/webhook handler."""
+    return await stripe_webhook_canonical(request)
 
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, STRIPE_WEBHOOK_SECRET
-        )
-    except Exception as e:
-        log.error(f"Stripe Webhook Error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-        
-    if event['type'] == 'checkout.session.completed':
-        session = event['data']['object']
-        clerk_id = session.get('client_reference_id')
-        if clerk_id and CLERK_SECRET_KEY:
-            # Update Clerk user metadata (tier: PRO)
-            async with httpx.AsyncClient() as client:
-                res = await client.patch(
-                    f"https://api.clerk.com/v1/users/{clerk_id}/metadata",
-                    headers={"Authorization": f"Bearer {CLERK_SECRET_KEY}"},
-                    json={"public_metadata": {"tier": "PRO"}}
-                )
-                if res.status_code != 200:
-                    log.error(f"Failed to update Clerk user {clerk_id}: {res.text}")
-                else:
-                    log.info(f"Successfully upgraded Clerk user {clerk_id} to PRO")
-    return {"status": "success"}
 
 @app.post('/ingest/trade', status_code=202)
 async def ingest_trade(event: TradeEvent, background_tasks: BackgroundTasks):
@@ -738,26 +709,47 @@ async def create_checkout_session(body: CheckoutRequest):
 
 
 @app.post('/stripe/webhook')
-async def stripe_webhook(request: Request):
-    """Stripe webhook — handles subscription lifecycle events."""
-    payload   = await request.body()
-    sig       = request.headers.get('stripe-signature', '')
-    try:
-        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-    except ValueError:
-        raise HTTPException(400, 'Invalid payload')
-    except Exception:
-        raise HTTPException(400, 'Invalid Stripe signature')
+async def stripe_webhook_canonical(request: Request):
+    """Canonical Stripe webhook handler — handles full subscription lifecycle.
 
-    etype = event['type']
-    data  = event['data']['object']
+    Signature verification:
+    - If STRIPE_WEBHOOK_SECRET is set: validates signature (rejects if bad).
+    - If STRIPE_WEBHOOK_SECRET is NOT set: logs a warning but still processes
+      the event. This allows test-mode setup before the secret is configured
+      in Railway. Set the secret ASAP in production to prevent spoofing.
+    """
+    payload = await request.body()
+    sig     = request.headers.get('stripe-signature', '')
+
+    if STRIPE_WEBHOOK_SECRET:
+        try:
+            event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+        except ValueError:
+            log.error('Stripe webhook: invalid payload (not JSON)')
+            raise HTTPException(400, 'Invalid payload')
+        except stripe.error.SignatureVerificationError as e:
+            log.error(f'Stripe webhook: bad signature — is STRIPE_WEBHOOK_SECRET correct? {e}')
+            raise HTTPException(400, 'Invalid Stripe signature')
+    else:
+        # No secret configured — parse raw JSON but do NOT verify signature.
+        # IMPORTANT: set STRIPE_WEBHOOK_SECRET in Railway to enable verification.
+        log.warning('STRIPE_WEBHOOK_SECRET not set — processing webhook WITHOUT signature check. Set this in Railway!')
+        try:
+            event = json.loads(payload)
+        except Exception:
+            raise HTTPException(400, 'Invalid JSON payload')
+
+    etype = event.get('type') if isinstance(event, dict) else event['type']
+    data  = (event.get('data', {}).get('object', {})
+             if isinstance(event, dict)
+             else event['data']['object'])
 
     if etype == 'checkout.session.completed':
         clerk_user_id = data.get('metadata', {}).get('clerk_user_id') or data.get('client_reference_id', '')
         if clerk_user_id:
             try:
                 sub = stripe.Subscription.retrieve(data['subscription'])
-                period_end = sub.get('current_period_end') or sub.get('items', {}).get('data', [{}])[0].get('current_period_end')
+                period_end = sub.get('current_period_end')
                 upsert_subscription(
                     clerk_user_id=clerk_user_id,
                     stripe_customer_id=data['customer'],
@@ -766,12 +758,22 @@ async def stripe_webhook(request: Request):
                     period_end_ts=period_end,
                 )
                 log.info(f'PRO activated for clerk user: {clerk_user_id}')
-                # Grant Discord role if user has linked their account
+                # Also update Clerk public metadata so client-side isPro() reads correctly
+                if CLERK_SECRET_KEY:
+                    async with httpx.AsyncClient() as client:
+                        res = await client.patch(
+                            f'https://api.clerk.com/v1/users/{clerk_user_id}/metadata',
+                            headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
+                            json={'public_metadata': {'tier': 'PRO'}},
+                        )
+                        if res.status_code != 200:
+                            log.error(f'Clerk metadata update failed for {clerk_user_id}: {res.text}')
+                # Grant Discord PRO role if user has linked their account
                 discord_uid = get_discord_user_id(clerk_user_id)
                 if discord_uid:
                     grant_pro_role(discord_uid)
             except Exception as e:
-                log.error(f'Failed to upsert subscription for {clerk_user_id}: {e}')
+                log.error(f'Failed to activate PRO for {clerk_user_id}: {e}')
 
     elif etype in ('customer.subscription.deleted', 'customer.subscription.updated'):
         sub    = data
@@ -784,7 +786,6 @@ async def stripe_webhook(request: Request):
             status=status,
             period_end_ts=sub.get('current_period_end'),
         )
-        # Revoke Discord role when subscription is NOT active
         if status != 'active' and clerk_uid:
             discord_uid = get_discord_user_id(clerk_uid)
             if discord_uid:
@@ -792,18 +793,17 @@ async def stripe_webhook(request: Request):
 
     elif etype == 'invoice.payment_failed':
         cancel_subscription(data['customer'])
-        log.warning(f'Payment failed \u2014 downgraded customer: {data["customer"]}')
-        # Revoke Discord role on payment failure — look up by Stripe customer ID
+        log.warning(f'Payment failed — downgraded customer: {data["customer"]}')
         try:
             conn = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT clerk_user_id, discord_user_id FROM subscriptions WHERE stripe_customer_id = %s LIMIT 1",
+                    'SELECT clerk_user_id, discord_user_id FROM subscriptions WHERE stripe_customer_id = %s LIMIT 1',
                     (data['customer'],)
                 )
                 row = cur.fetchone()
             conn.close()
-            if row and row[1]:  # discord_user_id present
+            if row and row[1]:
                 revoke_pro_role(row[1])
         except Exception as e:
             log.warning(f'Discord revoke on payment failure: {e}')

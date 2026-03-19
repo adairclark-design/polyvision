@@ -198,26 +198,21 @@ window.checkoutPro = async function () {
   $('proUpgradeOverlay').classList.add('open');
 };
 
+// ── Stripe Payment Link ───────────────────────────────────────────────────────
+// To switch between TEST and LIVE mode, change only this one URL constant.
+// TEST:  https://buy.stripe.com/test_14A4gz32T8RraaA0qv0sU07
+// LIVE:  replace this URL with your live payment link from Stripe dashboard
+const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/test_14A4gz32T8RraaA0qv0sU07';
+
 window.startStripeCheckout = async function () {
   const user = window.Clerk?.user;
   if (!user) { alert('Please sign in first.'); return; }
-  const email = user.primaryEmailAddress?.emailAddress || '';
-  try {
-    const resp = await fetch(`${BRAIN_URL}/checkout/create-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clerk_user_id: user.id, email }),
-    });
-    if (!resp.ok) throw new Error(await resp.text());
-    const { url } = await resp.json();
-    // Clear cached PRO status so it's re-checked fresh when user returns via back button
-    state.isProUser = undefined;
-    window.location.href = url;
-  } catch (err) {
-    console.error('Checkout error:', err);
-    alert('Could not start checkout. Please try again.');
-  }
+  // Append Clerk user ID so the webhook knows which user to upgrade after payment
+  const url = `${STRIPE_PAYMENT_LINK}?client_reference_id=${encodeURIComponent(user.id)}`;
+  state.isProUser = undefined;  // reset cache so PRO status re-checks on return
+  window.location.href = url;
 };
+
 
 // Re-check PRO status every time the page is restored from bfcache (e.g. Stripe back-nav)
 // This prevents stale state from bypassing PRO gates after the user clicks Back from Stripe.
