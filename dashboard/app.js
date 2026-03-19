@@ -1781,19 +1781,25 @@ async function initAuth() {
       window.Clerk.mountUserButton(document.getElementById('clerk-user-button'));
       initApp();
     } else {
-      // 🔐 Not authenticated — redirect to Clerk hosted sign-in page.
-      // After sign-in Clerk returns the user to /app automatically.
-      window.Clerk.redirectToSignIn({
-        afterSignInUrl: window.location.origin + '/app',
-        afterSignUpUrl: window.location.origin + '/app',
-        // v5 canonical params (safe no-ops in v4):
-        signInFallbackRedirectUrl: window.location.origin + '/app',
-        signUpFallbackRedirectUrl: window.location.origin + '/app',
+      // 🔐 Not signed in — open Clerk's in-page sign-in modal.
+      // openSignIn() renders the full Clerk UI as a floating overlay WITHOUT
+      // redirecting to an external domain (unlike redirectToSignIn which goes
+      // to calm-skink-66.clerk.accounts.dev — a domain that blocks polyvision.app
+      // returns unless explicitly added to the Clerk dashboard allowed origins).
+      // This works identically with TEST and LIVE keys on any domain.
+      document.getElementById('authOverlay').style.display = 'none';
+      window.Clerk.openSignIn();
+
+      // Re-initialize dashboard once sign-in modal closes successfully
+      window.Clerk.addListener(({ user }) => {
+        if (user) {
+          window.Clerk.mountUserButton(document.getElementById('clerk-user-button'));
+          initApp();
+        }
       });
     }
   } catch (err) {
     console.error('[PolyVision] Clerk auth error:', err);
-    // Last-resort fallback so the page is never permanently blocked
     document.getElementById('authOverlay').style.display = 'none';
     initApp();
   }
