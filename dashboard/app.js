@@ -1782,8 +1782,8 @@ window.exportPortfolioCSV = async function() {
 async function initAuth() {
   try {
     await window.Clerk.load({
-      afterSignInUrl: '/dashboard/'',
-      afterSignUpUrl: '/dashboard/'',
+      afterSignInUrl: '/dashboard/',
+      afterSignUpUrl: '/dashboard/',
     });
 
 
