@@ -172,6 +172,9 @@ function renderDiscordLinkButton() {
   container.innerHTML = state.discordLinked
     ? `<a class="discord-linked" href="https://discord.gg/2VPARrpHVC" target="_blank" rel="noopener" title="Open the PolyVision Discord server">💙 Discord Linked ✅ — Join Server</a>`
     : `<button class="btn-discord-link" onclick="openDiscordOAuth()">💙 Link Discord — Get PRO Channel Access</button>`;
+
+  // Always show Manage Subscription for PRO users below the Discord button
+  container.innerHTML += `<button class="btn-manage-sub" onclick="openBillingPortal()">⚙️ Manage Subscription</button>`;
 }
 
 window.openDiscordOAuth = function () {
@@ -192,6 +195,32 @@ window.addEventListener('message', (event) => {
       outcome: 'YES', usdValue: 0, timestamp: Date.now() });
   }
 });
+
+// ── Stripe Customer Portal ────────────────────────────────────────────────────
+window.openBillingPortal = async function () {
+  const user = window.Clerk?.user;
+  if (!user) return;
+  const btn = document.querySelector('.btn-manage-sub');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Opening…'; }
+  try {
+    const resp = await fetch(`${BRAIN_URL}/billing/portal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clerk_user_id: user.id,
+        return_url: window.location.href,
+      }),
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    const { url } = await resp.json();
+    window.location.href = url;  // redirect to Stripe's hosted portal
+  } catch (err) {
+    console.error('[PolyVision] Billing portal error:', err);
+    alert('Could not open the billing portal. Please try again or contact support.');
+    if (btn) { btn.disabled = false; btn.textContent = '⚙️ Manage Subscription'; }
+  }
+};
+
 
 window.checkoutPro = async function () {
   // Show the upgrade modal using the CSS class (modal-overlay.open) — NOT style.display

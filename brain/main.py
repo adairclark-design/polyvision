@@ -681,11 +681,12 @@ async def ws_pulse(websocket: WebSocket):
 
 # ── Stripe Checkout & Subscription Management ────────────────────────────────
 
+
 class CheckoutRequest(BaseModel):
     clerk_user_id: str
     email:         str
-    success_url:   str = 'https://polyvision.app/app?upgrade=success'
-    cancel_url:    str = 'https://polyvision.app/app?upgrade=cancelled'
+    success_url:   str = 'https://polyvision.app/dashboard/?upgrade=success'
+    cancel_url:    str = 'https://polyvision.app/dashboard/?upgrade=cancelled'
 
 @app.post('/checkout/create-session')
 async def create_checkout_session(body: CheckoutRequest):
@@ -704,6 +705,32 @@ async def create_checkout_session(body: CheckoutRequest):
             metadata={'clerk_user_id': body.clerk_user_id},
         )
         return {'url': session.url, 'session_id': session.id}
+    except Exception as e:
+        raise HTTPException(400, str(e))
+
+
+class PortalRequest(BaseModel):
+    clerk_user_id: str
+    return_url:    str = 'https://polyvision.app/dashboard/'
+
+@app.post('/billing/portal')
+async def billing_portal(body: PortalRequest):
+    """
+    Create a Stripe Customer Portal session so users can manage or cancel
+    their subscription, update payment methods, and view invoices.
+    Returns a {url} the frontend should redirect to.
+    """
+    if not STRIPE_API_KEY:
+        raise HTTPException(503, 'Stripe not configured.')
+    sub = get_subscription(body.clerk_user_id)
+    if not sub or not sub.get('stripe_customer_id'):
+        raise HTTPException(404, 'No active subscription found for this user.')
+    try:
+        session = stripe.billing_portal.Session.create(
+            customer=sub['stripe_customer_id'],
+            return_url=body.return_url,
+        )
+        return {'url': session.url}
     except Exception as e:
         raise HTTPException(400, str(e))
 
