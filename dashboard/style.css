@@ -2770,9 +2770,19 @@ button {
 .btn-discord-link:active { transform: translateY(0); }
 
 .discord-linked {
+    display: block;
     font-size: 12px;
     color: #5865F2;
     font-weight: 700;
     padding: 6px 0;
     text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.2s ease, opacity 0.2s ease;
+}
+
+.discord-linked:hover {
+    color: #7289da;
+    opacity: 0.85;
+    text-decoration: underline;
 }

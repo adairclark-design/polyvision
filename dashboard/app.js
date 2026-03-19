@@ -170,7 +170,7 @@ function renderDiscordLinkButton() {
   if (!state.isProUser) { container.style.display = 'none'; return; }
   container.style.display = '';
   container.innerHTML = state.discordLinked
-    ? `<div class="discord-linked">💙 Discord Linked ✅</div>`
+    ? `<a class="discord-linked" href="https://discord.gg/2VPARrpHVC" target="_blank" rel="noopener" title="Open the PolyVision Discord server">💙 Discord Linked ✅ — Join Server</a>`
     : `<button class="btn-discord-link" onclick="openDiscordOAuth()">💙 Link Discord — Get PRO Channel Access</button>`;
 }
 
