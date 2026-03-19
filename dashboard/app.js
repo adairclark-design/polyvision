@@ -1764,48 +1764,51 @@ window.exportPortfolioCSV = async function() {
 
 
 // ── Startup (Clerk Auth Wrapper) ─────────────────────────────────────────────
-// PERMANENT FIX (2026-03-19):
+// FINAL APPROACH (2026-03-19):
 //
-// Two bugs were causing the recurring "Sign In refreshes the page" issue:
+// The Sign In button on index.html (the landing page) now links DIRECTLY to
+// Clerk's hosted sign-in URL (calm-skink-66.clerk.accounts.dev/sign-in).
+// That means this function only runs for users who navigate directly to /app.
 //
-// BUG 1 — Cloudflare caches app.html:
-//   Fixed by dashboard/_headers: `Cache-Control: no-cache` on app.html.
-//   Ensures every visit loads the current app.js version, not a stale one.
+// We use mountSignIn() with NO routing params:
+//   - openSignIn()      → caused redirect loops in some browser sessions
+//   - redirectToSignIn()→ sent users to Clerk's domain, which blocked returns
+//                         from polyvision.app unless explicitly allowed
+//   - mountSignIn({afterSignInUrl}) → params removed in Clerk v5, caused loop
+//   - mountSignIn(el)   → WORKS: renders sign-in widget inline, Clerk handles
+//                         post-login redirect using its dashboard settings
 //
-// BUG 2 — Clerk.load() with no signInUrl reads Clerk dashboard setting:
-//   The Clerk dashboard has 'Sign-in URL' = /sign-in by default.
-//   /sign-in doesn't exist → Cloudflare serves index.html (landing page).
-//   To the user: looks like the page just refreshed.
-//   Fixed by passing signInUrl: '/app' to Clerk.load() directly in code.
-//   This overrides the dashboard setting permanently — nothing to misconfigure.
+// After sign-in, Clerk's addListener detects the user and launches the app.
 async function initAuth() {
   try {
     await window.Clerk.load({
-      // Only set after-auth destinations. Do NOT set signInUrl here —
-      // if signInUrl points to /app (the same page), Clerk creates an
-      // infinite redirect loop: unauthenticated user → /app → openSignIn
-      // → redirects to signInUrl (/app) → repeat → ERR_TOO_MANY_REDIRECTS.
       afterSignInUrl: '/app',
       afterSignUpUrl: '/app',
     });
+
     if (window.Clerk.user) {
-      // ✅ Authenticated — hide loading overlay, mount user button, start app
+      // ✅ Already signed in — hide overlay, mount user button, init dashboard
       document.getElementById('authOverlay').style.display = 'none';
       window.Clerk.mountUserButton(document.getElementById('clerk-user-button'));
       initApp();
     } else {
-      // 🔐 Not signed in — open Clerk's in-page sign-in modal.
-      // openSignIn() renders the full Clerk UI as a floating overlay WITHOUT
-      // redirecting to an external domain (unlike redirectToSignIn which goes
-      // to calm-skink-66.clerk.accounts.dev — a domain that blocks polyvision.app
-      // returns unless explicitly added to the Clerk dashboard allowed origins).
-      // This works identically with TEST and LIVE keys on any domain.
-      document.getElementById('authOverlay').style.display = 'none';
-      window.Clerk.openSignIn();
+      // 🔐 Not signed in — mount the Clerk sign-in widget inside the overlay.
+      // mountSignIn(element) with no params is stable across all Clerk versions.
+      // Clerk handles the post-login redirect using afterSignInUrl set above.
+      const overlay = document.getElementById('authOverlay');
+      overlay.innerHTML = ''; // clear the loading spinner
 
-      // Re-initialize dashboard once sign-in modal closes successfully
+      // Create a container for the Clerk sign-in widget
+      const signInDiv = document.createElement('div');
+      signInDiv.id = 'clerk-sign-in-mount';
+      overlay.appendChild(signInDiv);
+
+      window.Clerk.mountSignIn(signInDiv);
+
+      // Belt and suspenders: if user signs in via Clerk, hide overlay & init
       window.Clerk.addListener(({ user }) => {
         if (user) {
+          overlay.style.display = 'none';
           window.Clerk.mountUserButton(document.getElementById('clerk-user-button'));
           initApp();
         }
@@ -1813,10 +1816,23 @@ async function initAuth() {
     }
   } catch (err) {
     console.error('[PolyVision] Clerk auth error:', err);
-    document.getElementById('authOverlay').style.display = 'none';
-    initApp();
+    // Last resort: show a direct link to Clerk's sign-in page
+    const overlay = document.getElementById('authOverlay');
+    if (overlay) {
+      overlay.innerHTML = `
+        <div style="text-align:center;color:#e6edf3;font-family:Inter,sans-serif">
+          <div style="font-size:3rem;margin-bottom:1rem">🐋</div>
+          <h2 style="margin:0 0 8px">PolyVision</h2>
+          <p style="color:#8b949e;font-size:14px;margin-bottom:24px">Authentication unavailable. Please sign in to continue.</p>
+          <a href="https://calm-skink-66.clerk.accounts.dev/sign-in?redirect_url=https%3A%2F%2Fpolyvision.app%2Fapp"
+             style="display:inline-block;padding:12px 28px;background:#00ffa3;color:#000;border-radius:8px;font-weight:700;text-decoration:none;font-size:15px">
+            Sign In
+          </a>
+        </div>`;
+    }
   }
 }
+
 
 function initApp() {
   updateStats();
