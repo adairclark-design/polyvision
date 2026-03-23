@@ -142,18 +142,21 @@ async function loadProStatus() {
       renderDiscordLinkButton();
       // Show welcome toast if returning from Stripe
       const params = new URLSearchParams(location.search);
-      if (params.get('upgrade') === 'success' && state.isProUser) {
-        history.replaceState({}, '', location.pathname);
-        showToast({ tier: 'WHALE', whale: { handle: '🎉 Welcome to PolyVision PRO!' },
-          market: 'All PRO features are now unlocked. Your feed just expanded to 50 events.',
-          outcome: 'YES', usdValue: 0, timestamp: Date.now() });
-        // Nudge to link Discord after a short delay
-        if (!state.discordLinked) {
-          setTimeout(() => {
-            showToast({ tier: 'STANDARD', whale: { handle: '💙 Link Your Discord' },
-              market: 'Connect Discord to get exclusive PRO channel access with your subscription.',
-              outcome: 'YES', usdValue: 0, timestamp: Date.now() });
-          }, 4000);
+      if (params.get('upgrade') === 'success') {
+        if (state.isProUser) {
+          history.replaceState({}, '', location.pathname);
+          showToast({ tier: 'WHALE', whale: { handle: '🎉 Welcome to PolyVision PRO!' },
+            market: 'All PRO features are now unlocked. Your feed just expanded to 50 events.',
+            outcome: 'YES', usdValue: 0, timestamp: Date.now() });
+          if (!state.discordLinked) {
+            setTimeout(() => {
+              showToast({ tier: 'STANDARD', whale: { handle: '💙 Link Your Discord' },
+                market: 'Connect Discord to get exclusive PRO channel access.',
+                outcome: 'YES', usdValue: 0, timestamp: Date.now() });
+            }, 4000);
+          }
+        } else {
+          pollForProStatus();
         }
       }
     }
@@ -227,19 +230,36 @@ window.checkoutPro = async function () {
   $('proUpgradeOverlay').classList.add('open');
 };
 
-// ── Stripe Payment Link ───────────────────────────────────────────────────────
-// To switch between TEST and LIVE mode, change only this one URL constant.
-// TEST:  https://buy.stripe.com/test_14A4gz32T8RraaA0qv0sU07
-// LIVE:  replace this URL with your live payment link from Stripe dashboard
-const STRIPE_PAYMENT_LINK = 'https://buy.stripe.com/test_14A4gz32T8RraaA0qv0sU07';
-
+// ── Stripe Checkout Session ────────────────────────────────────────────────────
+// Calls /checkout/create-session on The Brain so the session has a success_url
+// that redirects back to /dashboard/?upgrade=success after payment.
 window.startStripeCheckout = async function () {
   const user = window.Clerk?.user;
   if (!user) { alert('Please sign in first.'); return; }
-  // Append Clerk user ID so the webhook knows which user to upgrade after payment
-  const url = `${STRIPE_PAYMENT_LINK}?client_reference_id=${encodeURIComponent(user.id)}`;
-  state.isProUser = undefined;  // reset cache so PRO status re-checks on return
-  window.location.href = url;
+  const btn = document.getElementById('btnGoStripe');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Redirecting to Stripe…'; }
+  try {
+    const email = user.primaryEmailAddress?.emailAddress || '';
+    const origin = window.location.origin;
+    const resp = await fetch(`${BRAIN_URL}/checkout/create-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clerk_user_id: user.id,
+        email,
+        success_url: `${origin}/dashboard/?upgrade=success`,
+        cancel_url:  `${origin}/dashboard/?upgrade=cancelled`,
+      }),
+    });
+    if (!resp.ok) throw new Error(await resp.text());
+    const { url } = await resp.json();
+    state.isProUser = undefined;
+    window.location.href = url;
+  } catch (err) {
+    console.error('[PolyVision] Checkout session error:', err);
+    alert('Could not start checkout. Please try again or contact support.');
+    if (btn) { btn.disabled = false; btn.textContent = 'Upgrade to PRO'; }
+  }
 };
 
 
