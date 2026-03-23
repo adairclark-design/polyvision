@@ -94,7 +94,12 @@ def _query_tavily(market_title: str) -> dict | None:
         log.warning("Tavily request timed out.")
         return None
     except requests.exceptions.HTTPError as e:
-        log.warning(f"Tavily HTTP error: {e}")
+        # Log the response body so we can see the actual error (rate limit, bad key, etc.)
+        try:
+            body = resp.text[:300]
+        except Exception:
+            body = "(no response body)"
+        log.warning(f"Tavily HTTP error {resp.status_code}: {body}")
         return None
     except Exception as e:
         log.warning(f"Tavily error: {e}")
