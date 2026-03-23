@@ -103,7 +103,7 @@ def get_subscription(clerk_user_id: str) -> dict:
         conn = _connect()
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                SELECT status, plan, current_period_end, stripe_customer_id
+                SELECT status, plan, current_period_end, stripe_customer_id, discord_user_id
                 FROM subscriptions
                 WHERE clerk_user_id = %s
                 LIMIT 1
