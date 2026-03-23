@@ -404,13 +404,13 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if args.dry_run:
-        raw = sys.stdin.read().strip(
+        raw = sys.stdin.read().strip()
         payload = json.loads(raw)
         receipt = deliver(payload, dry_run=True)
         print(json.dumps(receipt, indent=2))
         sys.exit(0)
 
-    raw = sys.stdin.read().strip()
+    raw = sys.stdin.read().strip())
     payload = json.loads(raw)
     receipt = deliver(payload, dry_run=False)
     print(json.dumps(receipt, indent=2))
