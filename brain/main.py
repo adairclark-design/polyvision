@@ -709,6 +709,112 @@ async def create_checkout_session(body: CheckoutRequest):
         raise HTTPException(400, str(e))
 
 
+class ConfirmCheckoutRequest(BaseModel):
+    session_id:    str
+    clerk_user_id: str
+
+@app.post('/stripe/confirm-checkout')
+async def confirm_checkout(body: ConfirmCheckoutRequest):
+    """Webhook-free payment verification. Verifies checkout session directly via Stripe API."""
+    if not STRIPE_API_KEY:
+        raise HTTPException(503, 'Stripe not configured.')
+    try:
+        session = stripe.checkout.Session.retrieve(
+            body.session_id,
+            expand=['subscription'],
+        )
+    except Exception as e:
+        raise HTTPException(400, f'Could not retrieve checkout session: {e}')
+
+    payment_status = session.get('payment_status', 'unpaid')
+    if payment_status != 'paid':
+        return {'is_pro': False, 'payment_status': payment_status}
+
+    sub = session.get('subscription') or {}
+    sub_id = sub.get('id') if isinstance(sub, dict) else getattr(sub, 'id', None)
+    customer_id = session.get('customer')
+    period_end = (sub.get('current_period_end') if isinstance(sub, dict)
+                  else getattr(sub, 'current_period_end', None))
+    clerk_uid = (
+        (session.get('metadata') or {}).get('clerk_user_id')
+        or session.get('client_reference_id')
+        or body.clerk_user_id
+    )
+    try:
+        upsert_subscription(
+            clerk_user_id=clerk_uid,
+            stripe_customer_id=customer_id,
+            stripe_sub_id=sub_id,
+            status='active',
+            period_end_ts=period_end,
+        )
+        log.info(f'confirm_checkout: PRO activated for {clerk_uid}')
+        if CLERK_SECRET_KEY:
+            async with httpx.AsyncClient() as client:
+                await client.patch(
+                    f'https://api.clerk.com/v1/users/{clerk_uid}/metadata',
+                    headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
+                    json={'public_metadata': {'tier': 'PRO'}},
+                )
+        return {'is_pro': True, 'status': 'activated', 'clerk_user_id': clerk_uid}
+    except Exception as e:
+        log.error(f'confirm_checkout: DB error for {clerk_uid}: {e}')
+        raise HTTPException(500, f'Failed to activate subscription: {e}')
+
+
+class ConfirmCheckoutRequest(BaseModel):
+    session_id:    str
+    clerk_user_id: str
+
+@app.post('/stripe/confirm-checkout')
+async def confirm_checkout(body: ConfirmCheckoutRequest):
+    """Webhook-free payment verification. Verifies checkout session directly via Stripe API."""
+    if not STRIPE_API_KEY:
+        raise HTTPException(503, 'Stripe not configured.')
+    try:
+        session = stripe.checkout.Session.retrieve(
+            body.session_id,
+            expand=['subscription'],
+        )
+    except Exception as e:
+        raise HTTPException(400, f'Could not retrieve checkout session: {e}')
+
+    payment_status = session.get('payment_status', 'unpaid')
+    if payment_status != 'paid':
+        return {'is_pro': False, 'payment_status': payment_status}
+
+    sub = session.get('subscription') or {}
+    sub_id = sub.get('id') if isinstance(sub, dict) else getattr(sub, 'id', None)
+    customer_id = session.get('customer')
+    period_end = (sub.get('current_period_end') if isinstance(sub, dict)
+                  else getattr(sub, 'current_period_end', None))
+    clerk_uid = (
+        (session.get('metadata') or {}).get('clerk_user_id')
+        or session.get('client_reference_id')
+        or body.clerk_user_id
+    )
+    try:
+        upsert_subscription(
+            clerk_user_id=clerk_uid,
+            stripe_customer_id=customer_id,
+            stripe_sub_id=sub_id,
+            status='active',
+            period_end_ts=period_end,
+        )
+        log.info(f'confirm_checkout: PRO activated for {clerk_uid}')
+        if CLERK_SECRET_KEY:
+            async with httpx.AsyncClient() as client:
+                await client.patch(
+                    f'https://api.clerk.com/v1/users/{clerk_uid}/metadata',
+                    headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
+                    json={'public_metadata': {'tier': 'PRO'}},
+                )
+        return {'is_pro': True, 'status': 'activated', 'clerk_user_id': clerk_uid}
+    except Exception as e:
+        log.error(f'confirm_checkout: DB error for {clerk_uid}: {e}')
+        raise HTTPException(500, f'Failed to activate subscription: {e}')
+
+
 class PortalRequest(BaseModel):
     clerk_user_id: str
     return_url:    str = 'https://polyvision.app/dashboard/'
