@@ -22,29 +22,23 @@ async function loadProStatus() {
       const data = await resp.json();
       state.isProUser = data.is_pro === true;
       state.discordLinked = !!data.discord_user_id;
+
+      // If explicitly redirected here with a session_id, verify it immediately
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get('session_id');
+      if (sessionId && !state.isProUser) {
+        console.log('Detected session_id in URL, triggering direct activation...');
+        activateProDirectly(sessionId);
+      }
       // Show/hide HUD upgrade button based on tier
       const upgradeBtn = $('btnHudUpgrade');
       if (upgradeBtn) upgradeBtn.style.display = state.isProUser ? 'none' : '';
       // Render Discord link button if PRO
       renderDiscordLinkButton();
       // Show welcome toast if returning from Stripe
-      const params = new URLSearchParams(location.search);
+      const params = new URLSearchParams(window.location.search);
       if (params.get('upgrade') === 'success') {
-        if (state.isProUser) {
-          history.replaceState({}, '', location.pathname);
-          showToast({ tier: 'WHALE', whale: { handle: '🎉 Welcome to PolyVision PRO!' },
-            market: 'All PRO features are now unlocked. Your feed just expanded to 50 events.',
-            outcome: 'YES', usdValue: 0, timestamp: Date.now() });
-          if (!state.discordLinked) {
-            setTimeout(() => {
-              showToast({ tier: 'STANDARD', whale: { handle: '💙 Link Your Discord' },
-                market: 'Connect Discord to get exclusive PRO channel access.',
-                outcome: 'YES', usdValue: 0, timestamp: Date.now() });
-            }, 4000);
-          }
-        } else {
-          pollForProStatus();
-        }
+        showUpgradeWelcome();
       }
     }
   } catch (_) {
@@ -58,6 +52,55 @@ async function loadProStatus() {
 // ── PRO Activation Poller ─────────────────────────────────────────────────────
 // Called when user returns from Stripe with ?upgrade=success but Brain hasn't
 // confirmed PRO yet (webhook timing lag). Polls every 2s for up to 30s.
+/**
+ * Verifies payment via the backend /stripe/confirm-checkout endpoint.
+ * This activates PRO status immediately without waiting for a webhook.
+ */
+async function activateProDirectly(sessionId) {
+  const user = window.Clerk?.user;
+  if (!user) return;
+  try {
+    const resp = await fetch(`${BRAIN_URL}/stripe/confirm-checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        clerk_user_id: user.id
+      })
+    });
+    const data = await resp.json();
+    if (data.is_pro) {
+      state.isProUser = true;
+      const upgradeBtn = $('btnHudUpgrade');
+      if (upgradeBtn) upgradeBtn.style.display = 'none';
+      showUpgradeWelcome();
+    }
+  } catch (e) {
+    console.error('Failed direct PRO activation:', e);
+  }
+}
+
+function showUpgradeWelcome() {
+  // Show a high-impact welcome message using existing toast system
+  showToast({
+    tier: 'WHALE',
+    whale: { handle: '🎉 Welcome to PolyVision PRO!' },
+    market: 'All PRO features are now unlocked. Your feed just expanded to 50 events.',
+    outcome: 'YES',
+    usdValue: 0,
+    timestamp: Date.now()
+  });
+
+  // Confetti!
+  if (typeof confetti === 'function') {
+    confetti({
+      particleCount: 150,
+      spread: 70,
+      origin: { y: 0.6 }
+    });
+  }
+}
+
 async function pollForProStatus(attempts = 0) {
   if (attempts >= 15) {
     console.warn('[PolyVision] PRO polling timed out. Try refreshing.');
