@@ -237,13 +237,24 @@ def send_onesignal(push: dict):
         },
         json={
             "app_id":            ONESIGNAL_APP_ID,
-            "included_segments": ["All"],
+            "included_segments": ["Subscribed Users"],  # "All" is not always valid; use the default
             "headings":          {"en": push["title"]},
             "contents":          {"en": push["body"]},
         },
         timeout=10,
     )
-    r.raise_for_status()
+    # Log the response body on any error so we can see what OneSignal actually says
+    if not r.ok:
+        body = r.text[:500]
+        # OneSignal returns 400 when no subscribers have enabled push yet -
+        # this is expected for a new app and shouldn't spam ERROR logs
+        if r.status_code == 400 and ("All included players are not subscribed" in body
+                                      or "No subscribers" in body
+                                      or "errors" in body.lower()):
+            log.info(f"OneSignal: no active subscribers yet (this is normal for a new app). Response: {body}")
+            return   # don't raise - treat as a soft skip, not a failure
+        log.error(f"OneSignal error {r.status_code}: {body}")
+        r.raise_for_status()
 
 
 def send_discord(embed: dict, webhook_override: str = ""):
@@ -405,3 +416,4 @@ if __name__ == "__main__":
     print(json.dumps(receipt, indent=2))
     if not all(receipt.get("channels", {}).values()):
         sys.exit(1)
+f
