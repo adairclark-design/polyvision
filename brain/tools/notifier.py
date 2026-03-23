@@ -404,7 +404,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if args.dry_run:
-        raw = sys.stdin.read().strip()
+        raw = sys.stdin.read().strip(
         payload = json.loads(raw)
         receipt = deliver(payload, dry_run=True)
         print(json.dumps(receipt, indent=2))
@@ -416,4 +416,3 @@ if __name__ == "__main__":
     print(json.dumps(receipt, indent=2))
     if not all(receipt.get("channels", {}).values()):
         sys.exit(1)
-f
