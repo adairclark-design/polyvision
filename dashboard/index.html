@@ -3,11 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>PolyVision — Whale Intelligence for Polymarket</title>
-  <meta name="description" content="Track $10K+ Polymarket whale trades in real time. Get email alerts, see whale consensus, and follow smart money on prediction markets." />
-  <meta property="og:title" content="PolyVision — Whale Intelligence for Polymarket" />
-  <meta property="og:description" content="Track $10K+ Polymarket whale trades in real time. Get email alerts, see whale consensus, and follow smart money on prediction markets." />
+  <title>PolyVision — AI Whale Intelligence for Prediction Markets</title>
+  <meta name="description" content="Track $10K+ Polymarket whale trades in real time. AI-powered alerts, whale consensus scores, and smart money following. The Bloomberg Terminal for prediction markets." />
+  <meta property="og:title" content="PolyVision — AI Whale Intelligence for Prediction Markets" />
+  <meta property="og:description" content="Track $10K+ Polymarket whale trades in real time. AI-powered alerts, whale consensus scores, and smart money following. The Bloomberg Terminal for prediction markets." />
+  <meta property="og:image" content="https://polyvision.app/assets/og-preview.png" />
+  <meta property="og:url" content="https://polyvision.app/" />
   <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:site" content="@PolyVision_" />
+  <meta name="twitter:title" content="PolyVision — AI Whale Intelligence for Prediction Markets" />
+  <meta name="twitter:description" content="Track $10K+ whale trades in real time. AI alerts, consensus scores, smart money following." />
+  <meta name="twitter:image" content="https://polyvision.app/assets/og-preview.png" />
   <meta name="theme-color" content="#00ffa3" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -223,10 +230,24 @@
     footer a { color: var(--muted); text-decoration: none; }
     footer a:hover { color: var(--mint); }
 
-    @media (max-width: 600px) {
+    @media (max-width: 768px) {
       nav { padding: 14px 20px; }
       .nav-links a { display: none; }
       .stat-cell { min-width: 130px; }
+      h1 { font-size: clamp(32px, 9vw, 54px); letter-spacing: -1px; }
+      .hero { padding: 100px 20px 60px; }
+      .hero-actions { flex-direction: column; align-items: center; }
+      .btn-primary, .btn-secondary { width: 100%; max-width: 320px; justify-content: center; }
+      .stats-bar { flex-direction: column; border-radius: 12px; }
+      .stat-cell { border-right: none; border-bottom: 1px solid var(--border); min-width: unset; }
+      .stat-cell:last-child { border-bottom: none; }
+      .features-grid { grid-template-columns: 1fr; }
+      .pricing-grid { grid-template-columns: 1fr; }
+      .preview-wrap { padding: 0 4px; }
+      .section { padding: 60px 16px; }
+      .section-title { font-size: clamp(24px, 6vw, 36px); }
+      .pricing-card { padding: 28px 24px; }
+      .mock-card { padding: 12px 14px; }
     }
   </style>
 </head>
@@ -252,9 +273,9 @@
     <span class="dot"></span>
     Live — tracking whale trades right now
   </div>
-  <h1>Follow <span class="accent">Smart Money</span><br/>on Prediction Markets.</h1>
+  <h1>The <span class="accent">AI Edge</span><br/>on Prediction Markets.</h1>
   <p class="hero-sub">
-    Real-time alerts when $500K+ traders move on Polymarket. See the whale consensus before the crowd. Never miss alpha again.
+    Real-time alerts the moment $10K+ whales move on Polymarket. GPT-4 interprets each trade. See consensus before the crowd. Never miss alpha again.
   </p>
   <div class="hero-actions">
     <button class="btn-primary" onclick="window.location.assign('/dashboard/')">🐋 Watch Live Feed</button>
@@ -388,13 +409,13 @@
     </div>
     <div class="pricing-card featured">
       <div class="plan-name">PRO</div>
-      <div class="plan-price">$29<span>/mo</span></div>
+      <div class="plan-price">$19<span>/mo</span></div>
       <div class="plan-desc">Everything you need to track smart money.</div>
       <ul class="plan-features">
         <li>50 live feed events</li>
         <li>All markets + category filters</li>
         <li>Unlimited mock positions + CSV export</li>
-        <li><strong>Email & push alerts</strong></li>
+        <li><strong>Email &amp; push alerts</strong></li>
         <li><strong>Whale consensus badges</strong></li>
         <li><strong>Price movement correlation scores</strong></li>
         <li><strong>Full leaderboard + profiles</strong></li>
