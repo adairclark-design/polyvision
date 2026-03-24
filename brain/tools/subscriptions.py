@@ -120,6 +120,7 @@ def get_subscription(clerk_user_id: str) -> dict:
             'status':               row['status'],
             'current_period_end':   exp.isoformat() if exp else None,
             'discord_user_id':      row.get('discord_user_id'),
+            'stripe_customer_id':   row.get('stripe_customer_id'),   # needed by billing portal
         }
     except Exception as e:
         log.warning(f'get_subscription failed: {e}')
