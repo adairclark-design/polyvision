@@ -359,9 +359,14 @@
 
         <!-- ── COL 2: THE PULSE FEED ────────────────────────────────────────────── -->
         <main class="pulse-col" id="pulseCol">
-            <div class="section-header">
+                <div class="section-header">
                 <h1 class="section-title">⚡ The Pulse</h1>
                 <span class="section-subtitle">Real-time Smart Money signals</span>
+                <div class="platform-filter" id="platformFilter">
+                    <button class="platform-btn pf-all active" id="pfBtnAll" onclick="setSourceFilter('all')">All</button>
+                    <button class="platform-btn pf-poly" id="pfBtnPoly" onclick="setSourceFilter('POLYMARKET')">◎ Polymarket</button>
+                    <button class="platform-btn pf-kalshi" id="pfBtnKalshi" onclick="setSourceFilter('KALSHI')">⚡ Kalshi</button>
+                </div>
                 <div class="sort-toggle">
                     <button class="sort-btn active" id="sortNew">Newest</button>
                     <button class="sort-btn" id="sortSize">Largest</button>
