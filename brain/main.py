@@ -65,7 +65,7 @@ from subscriptions import (
     link_discord, get_discord_user_id,
 )
 from discord_roles import (
-    grant_pro_role, revoke_pro_role, exchange_code_for_user_id,
+    grant_pro_role, revoke_pro_role, kick_from_server, exchange_code_for_user_id,
 )
 from price_tracker import (
     init_db        as init_price_tracker_db,
@@ -1007,10 +1007,25 @@ async def stripe_webhook_canonical(request: Request):
 
             if discord_uid:
                 try:
-                    revoke_pro_role(discord_uid)
-                    log.info(f'Discord PRO role revoked for {clerk_uid} (status: {status})')
+                    kick_from_server(discord_uid)   # removes from server so invite works on resubscribe
+                    log.info(f'Discord user kicked from server for {clerk_uid} (status: {status})')
                 except Exception as e:
-                    log.warning(f'Discord revoke failed for {clerk_uid}: {e}')
+                    log.warning(f'Discord kick failed for {clerk_uid}: {e}')
+
+            # Clear discord_user_id from DB so they must re-link on resubscription
+            if clerk_uid:
+                try:
+                    _dconn = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
+                    with _dconn.cursor() as cur:
+                        cur.execute(
+                            'UPDATE subscriptions SET discord_user_id=NULL, updated_at=NOW() '
+                            'WHERE clerk_user_id=%s',
+                            (clerk_uid,)
+                        )
+                    _dconn.commit(); _dconn.close()
+                    log.info(f'discord_user_id cleared for {clerk_uid}')
+                except Exception as dbe:
+                    log.warning(f'discord_user_id clear failed: {dbe}')
 
             # Revoke Clerk publicMetadata so the frontend immediately shows FREE
             if CLERK_SECRET_KEY and clerk_uid:
@@ -1044,7 +1059,15 @@ async def stripe_webhook_canonical(request: Request):
                 row = cur.fetchone()
             conn.close()
             if row and row[1]:
-                revoke_pro_role(row[1])
+                kick_from_server(row[1])   # kick from server, not just role revoke
+                # Clear discord_user_id from DB
+                try:
+                    _c = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
+                    with _c.cursor() as cur:
+                        cur.execute('UPDATE subscriptions SET discord_user_id=NULL, updated_at=NOW() WHERE stripe_customer_id=%s', (data['customer'],))
+                    _c.commit(); _c.close()
+                except Exception:
+                    pass
         except Exception as e:
             log.warning(f'Discord revoke on payment failure: {e}')
 
@@ -1075,12 +1098,18 @@ async def stripe_webhook_canonical(request: Request):
                             json={'public_metadata': {'tier': 'FREE'}},
                         )
                     log.info(f'customer.deleted: Clerk tier set to FREE for {clerk_uid}')
-                # Revoke Discord role
+                # Kick from Discord server (so invite works on resubscription)
                 if discord_uid:
                     try:
-                        revoke_pro_role(discord_uid)
+                        kick_from_server(discord_uid)
+                        log.info(f'customer.deleted: kicked {discord_uid} from server')
+                        # Clear discord_user_id from DB
+                        _cd = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
+                        with _cd.cursor() as cur:
+                            cur.execute('UPDATE subscriptions SET discord_user_id=NULL, updated_at=NOW() WHERE stripe_customer_id=%s', (stripe_customer_id,))
+                        _cd.commit(); _cd.close()
                     except Exception as de:
-                        log.warning(f'customer.deleted: Discord revoke failed: {de}')
+                        log.warning(f'customer.deleted: Discord kick failed: {de}')
         except Exception as e:
             log.warning(f'customer.deleted: revoke failed: {e}')
 
