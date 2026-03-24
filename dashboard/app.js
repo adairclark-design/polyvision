@@ -393,6 +393,9 @@ window.openBillingPortal = async function () {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         clerk_user_id: user.id,
+        email: user.primaryEmailAddress?.emailAddress
+              || user.emailAddresses?.[0]?.emailAddress
+              || '',
         return_url: window.location.href,
       }),
     });
