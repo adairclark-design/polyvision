@@ -354,7 +354,7 @@ function renderDiscordLinkButton() {
   if (!state.isProUser) { container.style.display = 'none'; return; }
   container.style.display = '';
   container.innerHTML = state.discordLinked
-    ? `<a class="discord-linked" href="${window.ENV_DISCORD_INVITE_URL || 'https://discord.gg/REJ79d3N'}" target="_blank" rel="noopener" title="Open the PolyVision Discord server">💙 Discord Linked ✅ — Join Server</a>`
+    ? `<a class="discord-linked" href="https://discord.com/channels/1485011217381589022" target="_blank" rel="noopener" title="Open the PolyVision Discord server">💙 Discord Linked ✅ — Open Server</a>`
 
     : `<button class="btn-discord-link" onclick="openDiscordOAuth()">💙 Link Discord — Get PRO Channel Access</button>`;
 
