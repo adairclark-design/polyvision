@@ -102,19 +102,21 @@ def kick_from_server(discord_user_id: str) -> bool:
         return False
 
 
-def exchange_code_for_user_id(code: str, redirect_uri: str) -> tuple[str | None, str | None]:
+def exchange_code_for_user_id(code: str, redirect_uri: str) -> tuple[str | None, str | None, str | None]:
     """
     Complete Discord OAuth2 flow:
       1. Exchange authorization code for an access token
       2. Call /users/@me to get the user's Discord ID
-    Returns (discord_user_id, None) on success or (None, error_detail) on failure.
+    Returns (discord_user_id, access_token, None) on success
+    or      (None, None, error_detail) on failure.
+    The access_token is needed for add_to_guild() when scope includes guilds.join.
     """
     client_id     = os.getenv("DISCORD_CLIENT_ID", "")
     client_secret = os.getenv("DISCORD_CLIENT_SECRET", "")
     if not client_id or not client_secret:
         msg = "DISCORD_CLIENT_ID or DISCORD_CLIENT_SECRET not set in env."
         log.error(msg)
-        return None, msg
+        return None, None, msg
 
     # Step 1: Exchange code → access token
     try:
@@ -133,12 +135,12 @@ def exchange_code_for_user_id(code: str, redirect_uri: str) -> tuple[str | None,
         if not token_resp.ok:
             detail = f"Token exchange {token_resp.status_code}: {token_resp.text}"
             log.error(f"Discord token exchange failed — {detail}")
-            return None, detail
+            return None, None, detail
         access_token = token_resp.json()["access_token"]
     except Exception as e:
         detail = f"Token exchange exception: {e}"
         log.error(f"Discord {detail}")
-        return None, detail
+        return None, None, detail
 
     # Step 2: Get Discord user ID
     try:
@@ -150,11 +152,44 @@ def exchange_code_for_user_id(code: str, redirect_uri: str) -> tuple[str | None,
         if not me_resp.ok:
             detail = f"/users/@me {me_resp.status_code}: {me_resp.text}"
             log.error(f"Discord {detail}")
-            return None, detail
+            return None, None, detail
         discord_user_id = me_resp.json()["id"]
         log.info(f"Discord user ID obtained: {discord_user_id}")
-        return discord_user_id, None
+        return discord_user_id, access_token, None
     except Exception as e:
         detail = f"/users/@me exception: {e}"
         log.error(f"Discord {detail}")
-        return None, detail
+        return None, None, detail
+
+
+def add_to_guild(discord_user_id: str, access_token: str) -> bool:
+    """
+    Add a user to the PolyVision Discord server using their OAuth access_token
+    (requires guilds.join scope) and immediately grant the PRO role.
+
+    This bypasses the manual invite flow entirely — users are added automatically
+    when they complete Discord OAuth on the PolyVision dashboard.
+
+    Returns True if added or already a member, False on failure.
+    """
+    if not discord_user_id or not access_token or not _enabled():
+        return False
+    try:
+        url = f"{DISCORD_API}/guilds/{DISCORD_GUILD_ID}/members/{discord_user_id}"
+        payload = {"access_token": access_token}
+        if DISCORD_PRO_ROLE_ID:
+            payload["roles"] = [DISCORD_PRO_ROLE_ID]
+        r = requests.put(url, json=payload, headers=_headers(), timeout=10)
+        if r.status_code == 201:
+            log.info(f"Discord: user {discord_user_id} added to server + PRO role granted")
+            return True
+        if r.status_code == 204:
+            # Already a member — still try to grant role separately
+            log.info(f"Discord: user {discord_user_id} already in server — granting PRO role")
+            grant_pro_role(discord_user_id)
+            return True
+        log.error(f"add_to_guild failed: {r.status_code} {r.text}")
+        return False
+    except Exception as e:
+        log.error(f"add_to_guild error: {e}")
+        return False
