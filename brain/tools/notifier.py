@@ -33,17 +33,32 @@ DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID", "")
 
 # ── Multi-tier Discord channel routing ────────────────────────────────────────
 # Each tier is a (webhook_url, min_usd_threshold) pair.
-# A trade posts to a channel only if its USD value >= that channel's threshold.
-# Configure via Railway env vars — no code changes needed to add channels.
-# Order: cheapest threshold first (most inclusive channel)
-DISCORD_TIERS = [
+# Trades are routed by SOURCE: POLYMARKET → POLY tiers, KALSHI → KALSHI tiers.
+# Configure all webhook URLs via Railway env vars — no code changes needed.
+#
+# POLYMARKET channels (rename in Discord: poly-standard / poly-whale / poly-mega)
+DISCORD_POLY_TIERS = [
     url_thresh for url_thresh in [
-        (os.getenv("DISCORD_WEBHOOK_URL",      ""),  float(os.getenv("DISCORD_MIN_SIZE",   "5000"))),
+        (os.getenv("DISCORD_WEBHOOK_URL",      ""),  float(os.getenv("DISCORD_MIN_SIZE",         "500"))),
         (os.getenv("DISCORD_WEBHOOK_50K_URL",  ""),  50_000.0),
         (os.getenv("DISCORD_WEBHOOK_100K_URL", ""), 100_000.0),
     ]
-    if url_thresh[0]   # only include tiers where the webhook URL is actually configured
+    if url_thresh[0]  # only include tiers where the webhook URL is set
 ]
+
+# KALSHI channels (new) — lower thresholds: Kalshi positions are typically smaller
+# Add webhooks via new Railway vars: DISCORD_KALSHI_WEBHOOK_URL / _1K_URL / _5K_URL
+DISCORD_KALSHI_TIERS = [
+    url_thresh for url_thresh in [
+        (os.getenv("DISCORD_KALSHI_WEBHOOK_URL", ""),  float(os.getenv("DISCORD_KALSHI_MIN_SIZE", "200"))),
+        (os.getenv("DISCORD_KALSHI_1K_URL",     ""),   1_000.0),
+        (os.getenv("DISCORD_KALSHI_5K_URL",     ""),   5_000.0),
+    ]
+    if url_thresh[0]
+]
+
+# Backward-compat alias (used by dry-run path)
+DISCORD_TIERS = DISCORD_POLY_TIERS
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 REDIS_URL          = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -162,6 +177,10 @@ def format_discord_embed(payload: dict) -> dict:
     trades  = payload.get("wallet_total_trades")
     copy    = payload.get("copy_trade_recommended", False)
     summary = payload.get("ai_summary", "")
+    source  = payload.get("source", "POLYMARKET").upper()
+
+    # Platform badge — shown in footer
+    platform_label = "◎ Polymarket" if source == "POLYMARKET" else "⚡ Kalshi"
 
     # Green for YES, Red for NO
     color = 0x00C851 if str(outcome).lower() == "yes" else 0xFF4444
@@ -173,12 +192,13 @@ def format_discord_embed(payload: dict) -> dict:
             "color":       color,
             "description": summary,
             "fields": [
-                {"name": "Position",    "value": f"{outcome} @ {_fmt_price(price)}", "inline": True},
-                {"name": "Size",        "value": f"${usd:,.0f} USD",               "inline": True},
-                {"name": "Win Rate",    "value": wr_str,                            "inline": True},
-                {"name": "Copy Trade",  "value": "✅ Recommended" if copy else "⛔ Not Recommended", "inline": True},
+                {"name": "Platform",   "value": platform_label,                               "inline": True},
+                {"name": "Position",   "value": f"{outcome} @ {_fmt_price(price)}",           "inline": True},
+                {"name": "Size",       "value": f"${usd:,.0f} USD",                          "inline": True},
+                {"name": "Win Rate",   "value": wr_str,                                       "inline": True},
+                {"name": "Copy Trade", "value": "✅ Recommended" if copy else "⛔ Not Recommended", "inline": True},
             ],
-            "footer": {"text": "⚠️ Whales can hedge. Trade at your own risk."},
+            "footer": {"text": f"{platform_label} · ⚠️ Whales can hedge. Trade at your own risk."},
         }]
     }
 
@@ -322,13 +342,19 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
     # ── Discord / Telegram size gate ───────────────────────────────────────────
     usd_value  = float(payload.get("usd_value", 0))
 
-    # ── Discord: post to each configured tier channel where trade size qualifies ─
-    qualifying_tiers = [(url, thr) for url, thr in DISCORD_TIERS if usd_value >= thr]
+    # ── Source-aware Discord tier routing ──────────────────────────────────────
+    source = payload.get("source", "POLYMARKET").upper()
+    if source == "KALSHI":
+        active_tiers = DISCORD_KALSHI_TIERS
+    else:
+        active_tiers = DISCORD_POLY_TIERS
+
+    qualifying_tiers = [(url, thr) for url, thr in active_tiers if usd_value >= thr]
 
     if not qualifying_tiers:
         log.info(
-            f"Discord/Telegram skipped: ${usd_value:,.0f} below all configured thresholds "
-            f"({[f'${t:,.0f}' for _, t in DISCORD_TIERS]})"
+            f"Discord/Telegram skipped ({source}): ${usd_value:,.0f} below all configured thresholds "
+            f"({[f'${t:,.0f}' for _, t in active_tiers]})"
         )
 
     if dry_run:
