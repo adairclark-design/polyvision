@@ -717,16 +717,20 @@ async def create_checkout_session(body: CheckoutRequest):
     if not STRIPE_API_KEY or not STRIPE_PRICE_ID:
         raise HTTPException(503, 'Stripe not configured — set STRIPE_API_KEY and STRIPE_PRICE_ID.')
     try:
-        session = stripe.checkout.Session.create(
+        session_params = dict(
             payment_method_types=['card'],
             mode='subscription',
             line_items=[{'price': STRIPE_PRICE_ID, 'quantity': 1}],
-            customer_email=body.email,
             client_reference_id=body.clerk_user_id,   # used in webhook to link sub → user
             success_url=body.success_url + '&session_id={CHECKOUT_SESSION_ID}',
             cancel_url=body.cancel_url,
             metadata={'clerk_user_id': body.clerk_user_id},
         )
+        # Only set customer_email when non-empty — Stripe will collect it on the
+        # checkout page otherwise (needed for social-login users with no email in Clerk)
+        if body.email:
+            session_params['customer_email'] = body.email
+        session = stripe.checkout.Session.create(**session_params)
         return {'url': session.url, 'session_id': session.id}
     except Exception as e:
         raise HTTPException(400, str(e))
