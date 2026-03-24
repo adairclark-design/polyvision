@@ -354,7 +354,8 @@ function renderDiscordLinkButton() {
   if (!state.isProUser) { container.style.display = 'none'; return; }
   container.style.display = '';
   container.innerHTML = state.discordLinked
-    ? `<a class="discord-linked" href="https://discord.gg/XQWgDqdVmK" target="_blank" rel="noopener" title="Open the PolyVision Discord server">💙 Discord Linked ✅ — Join Server</a>`
+    ? `<a class="discord-linked" href="${window.ENV_DISCORD_INVITE_URL || 'https://discord.gg/WH3DwgMF'}" target="_blank" rel="noopener" title="Open the PolyVision Discord server">💙 Discord Linked ✅ — Join Server</a>`
+
     : `<button class="btn-discord-link" onclick="openDiscordOAuth()">💙 Link Discord — Get PRO Channel Access</button>`;
 
   // Always show Manage Subscription for PRO users below the Discord button
