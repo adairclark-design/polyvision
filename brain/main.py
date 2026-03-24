@@ -71,6 +71,12 @@ from price_tracker import (
     init_db        as init_price_tracker_db,
     run_price_tracker_pass,
 )
+try:
+    from kalshi_ear import poll_kalshi as _poll_kalshi
+    KALSHI_ENABLED = True
+except ImportError:
+    KALSHI_ENABLED = False
+    _poll_kalshi = None
 
 load_dotenv()
 
@@ -158,6 +164,19 @@ async def lifespan(app: FastAPI):
         name='Daily Price Impact Tracker (07:30 EST)',
         replace_existing=True,
     )
+    # ── Kalshi Trade Poller (every 60 seconds) ──────────────────────────────────────
+    if KALSHI_ENABLED:
+        scheduler.add_job(
+            lambda: asyncio.get_event_loop().run_in_executor(None, _poll_kalshi),
+            trigger='interval',
+            seconds=60,
+            id='kalshi_poller',
+            name='Kalshi Trade Poller (60s interval)',
+            replace_existing=True,
+        )
+        log.info('Kalshi poller scheduled — polls every 60 seconds.')
+    else:
+        log.info('Kalshi ear not available (kalshi_ear.py not found) — Polymarket-only mode.')
     scheduler.start()
     log.info(f'Briefing scheduler started — fires daily at {BRIEFING_HOUR:02d}:00 EST.')
     log.info('Market resolution cron scheduled — fires daily at 06:00 EST.')
@@ -192,6 +211,7 @@ class TradeEvent(BaseModel):
     timestamp:     str = ''
     trader_pseudonym: str = ''
     trader_name:   str = ''
+    source:        str = 'POLYMARKET'   # 'POLYMARKET' | 'KALSHI'
 
 class WhaleFollowRequest(BaseModel):
     wallet_address:     str
@@ -299,6 +319,9 @@ async def run_pipeline(event_dict: dict):
         alert = build_alert(event_dict, whale_profile)
         if not alert:
             return   # filtered out by threshold
+
+        # Propagate the source platform so the dashboard can show POLYMARKET / KALSHI badge
+        alert['source'] = event_dict.get('source', 'POLYMARKET')
 
         # 1b. Cluster Detection — check if 3+ whales on same side within 15 min
         #     If a cluster is found, promote the alert to CLUSTER tier
@@ -715,7 +738,15 @@ class ConfirmCheckoutRequest(BaseModel):
 
 @app.post('/stripe/confirm-checkout')
 async def confirm_checkout(body: ConfirmCheckoutRequest):
-    """Webhook-free payment verification. Verifies checkout session directly via Stripe API."""
+    """Webhook-free payment verification.
+
+    Called by the frontend when the user returns from Stripe with ?session_id=xxx.
+    Retrieves the checkout session directly from the Stripe API, verifies payment,
+    and immediately grants PRO access — no need to wait for a webhook delivery.
+
+    This is the primary activation path. Webhooks remain a useful backup for
+    async events (renewals, cancellations) but are not required for initial activation.
+    """
     if not STRIPE_API_KEY:
         raise HTTPException(503, 'Stripe not configured.')
     try:
@@ -724,22 +755,28 @@ async def confirm_checkout(body: ConfirmCheckoutRequest):
             expand=['subscription'],
         )
     except Exception as e:
+        log.error(f'confirm_checkout: cannot retrieve session {body.session_id}: {e}')
         raise HTTPException(400, f'Could not retrieve checkout session: {e}')
 
     payment_status = session.get('payment_status', 'unpaid')
     if payment_status != 'paid':
+        log.info(f'confirm_checkout: session {body.session_id} not paid yet ({payment_status})')
         return {'is_pro': False, 'payment_status': payment_status}
 
-    sub = session.get('subscription') or {}
-    sub_id = sub.get('id') if isinstance(sub, dict) else getattr(sub, 'id', None)
+    # Extract subscription details
+    sub         = session.get('subscription') or {}
+    sub_id      = sub.get('id')      if isinstance(sub, dict) else getattr(sub, 'id', None)
     customer_id = session.get('customer')
-    period_end = (sub.get('current_period_end') if isinstance(sub, dict)
-                  else getattr(sub, 'current_period_end', None))
+    period_end  = (sub.get('current_period_end') if isinstance(sub, dict)
+                   else getattr(sub, 'current_period_end', None))
+
+    # Prefer session metadata for Clerk user ID; fall back to request body
     clerk_uid = (
         (session.get('metadata') or {}).get('clerk_user_id')
         or session.get('client_reference_id')
         or body.clerk_user_id
     )
+
     try:
         upsert_subscription(
             clerk_user_id=clerk_uid,
@@ -748,71 +785,24 @@ async def confirm_checkout(body: ConfirmCheckoutRequest):
             status='active',
             period_end_ts=period_end,
         )
-        log.info(f'confirm_checkout: PRO activated for {clerk_uid}')
+        log.info(f'confirm_checkout: PRO activated for {clerk_uid} (direct verification)')
+
+        # Update Clerk public metadata so isPro() on the client reads correctly
         if CLERK_SECRET_KEY:
             async with httpx.AsyncClient() as client:
-                await client.patch(
+                res = await client.patch(
                     f'https://api.clerk.com/v1/users/{clerk_uid}/metadata',
                     headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
                     json={'public_metadata': {'tier': 'PRO'}},
                 )
+                if res.status_code != 200:
+                    log.warning(f'confirm_checkout: Clerk metadata update failed: {res.text}')
+
         return {'is_pro': True, 'status': 'activated', 'clerk_user_id': clerk_uid}
     except Exception as e:
         log.error(f'confirm_checkout: DB error for {clerk_uid}: {e}')
         raise HTTPException(500, f'Failed to activate subscription: {e}')
 
-
-class ConfirmCheckoutRequest(BaseModel):
-    session_id:    str
-    clerk_user_id: str
-
-@app.post('/stripe/confirm-checkout')
-async def confirm_checkout(body: ConfirmCheckoutRequest):
-    """Webhook-free payment verification. Verifies checkout session directly via Stripe API."""
-    if not STRIPE_API_KEY:
-        raise HTTPException(503, 'Stripe not configured.')
-    try:
-        session = stripe.checkout.Session.retrieve(
-            body.session_id,
-            expand=['subscription'],
-        )
-    except Exception as e:
-        raise HTTPException(400, f'Could not retrieve checkout session: {e}')
-
-    payment_status = session.get('payment_status', 'unpaid')
-    if payment_status != 'paid':
-        return {'is_pro': False, 'payment_status': payment_status}
-
-    sub = session.get('subscription') or {}
-    sub_id = sub.get('id') if isinstance(sub, dict) else getattr(sub, 'id', None)
-    customer_id = session.get('customer')
-    period_end = (sub.get('current_period_end') if isinstance(sub, dict)
-                  else getattr(sub, 'current_period_end', None))
-    clerk_uid = (
-        (session.get('metadata') or {}).get('clerk_user_id')
-        or session.get('client_reference_id')
-        or body.clerk_user_id
-    )
-    try:
-        upsert_subscription(
-            clerk_user_id=clerk_uid,
-            stripe_customer_id=customer_id,
-            stripe_sub_id=sub_id,
-            status='active',
-            period_end_ts=period_end,
-        )
-        log.info(f'confirm_checkout: PRO activated for {clerk_uid}')
-        if CLERK_SECRET_KEY:
-            async with httpx.AsyncClient() as client:
-                await client.patch(
-                    f'https://api.clerk.com/v1/users/{clerk_uid}/metadata',
-                    headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
-                    json={'public_metadata': {'tier': 'PRO'}},
-                )
-        return {'is_pro': True, 'status': 'activated', 'clerk_user_id': clerk_uid}
-    except Exception as e:
-        log.error(f'confirm_checkout: DB error for {clerk_uid}: {e}')
-        raise HTTPException(500, f'Failed to activate subscription: {e}')
 
 
 class PortalRequest(BaseModel):
