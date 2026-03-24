@@ -52,16 +52,17 @@ _last_cursor: Optional[str] = None     # Kalshi pagination cursor
 def _sign_headers(method: str, path: str) -> dict:
     """
     Generate Kalshi authentication headers using RSA-PSS signing.
-    Kalshi protocol: sign(timestamp + METHOD_UPPERCASE + path_with_query)
+    Kalshi protocol: sign(timestamp_ms + METHOD_UPPERCASE + base_path)
+    Salt length: PSS.MAX_LENGTH (Kalshi reference SDK uses max, not digest length)
     """
     try:
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import padding as apadding
 
-        ts = str(int(time.time() * 1000))
-        msg = (ts + method.upper() + path).encode()
+        ts = str(int(time.time() * 1000))   # milliseconds
+        msg = (ts + method.upper() + path).encode('utf-8')
 
-        # Railway stores multiline values with literal \\n — convert back to real newlines
+        # Handle both escaped \\n and real newlines (Railway pastes may vary)
         pem = KALSHI_PRIVATE_KEY.replace('\\n', '\n').strip()
         if not pem.startswith('-----BEGIN'):
             raise ValueError('KALSHI_PRIVATE_KEY does not look like a valid PEM key.')
@@ -71,14 +72,16 @@ def _sign_headers(method: str, path: str) -> dict:
             msg,
             apadding.PSS(
                 mgf=apadding.MGF1(hashes.SHA256()),
-                salt_length=apadding.PSS.DIGEST_LENGTH,
+                salt_length=apadding.PSS.MAX_LENGTH,   # Kalshi reference SDK: MAX_LENGTH
             ),
             hashes.SHA256(),
         )
+        sig_b64 = base64.b64encode(sig).decode()
+        log.debug(f'[Kalshi] Signed {method} {path} ts={ts} sig_prefix={sig_b64[:16]}...')
         return {
             'KALSHI-ACCESS-KEY':       KALSHI_ACCESS_KEY,
             'KALSHI-ACCESS-TIMESTAMP': ts,
-            'KALSHI-ACCESS-SIGNATURE': base64.b64encode(sig).decode(),
+            'KALSHI-ACCESS-SIGNATURE': sig_b64,
             'Content-Type':            'application/json',
         }
     except ImportError:
