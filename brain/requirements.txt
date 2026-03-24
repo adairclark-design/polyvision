@@ -11,3 +11,4 @@ apscheduler>=3.10.0
 stripe>=9.0.0
 sentry-sdk[fastapi]>=2.0.0
 resend>=0.7.0
+cryptography>=42.0.0
