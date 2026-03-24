@@ -18,6 +18,9 @@ Self-annealing log:
               endpoint uses cursor-based pagination (newest trades first).
               Post-migration (March 12, 2026): uses count_fp and yes_price_fp fields.
               Falls back to count/yes_price for backward compat.
+  2026-03-23: Fixed 401 — Kalshi signature must use BASE PATH ONLY (no query string).
+              i.e. sign(ts + "GET" + "/trade-api/v2/markets/trades"), NOT the ?limit=200 part.
+              Query params are passed separately in the request, not in the signed message.
 """
 
 import os
@@ -144,14 +147,10 @@ def poll_kalshi(brain_url: str = None) -> int:
     if _last_cursor:
         params['cursor'] = _last_cursor
 
-    # Build full path with query string for signature (Kalshi requires signed path+query)
-    qs = '&'.join(f'{k}={v}' for k, v in sorted(params.items()))
-    sig_path = f'{path}?{qs}'
-
     try:
         resp = requests.get(
             KALSHI_BASE + path,
-            headers=_sign_headers('GET', sig_path),
+            headers=_sign_headers('GET', path),   # sign base path only — NO query string
             params=params,
             timeout=12,
         )
