@@ -167,7 +167,7 @@ async def lifespan(app: FastAPI):
     # ── Kalshi Trade Poller (every 60 seconds) ──────────────────────────────────────
     if KALSHI_ENABLED:
         scheduler.add_job(
-            lambda: asyncio.get_event_loop().run_in_executor(None, _poll_kalshi),
+            _poll_kalshi,          # sync function — ASyncIOScheduler runs it in thread executor
             trigger='interval',
             seconds=60,
             id='kalshi_poller',
