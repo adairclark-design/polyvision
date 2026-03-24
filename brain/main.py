@@ -845,11 +845,32 @@ async def billing_portal(body: PortalRequest):
         return {'url': session.url}
     except Exception as e:
         err = str(e)
-        # Auto-recovery: stale customer ID (wrong Stripe environment)
-        if 'No such customer' in err and body.email:
-            log.warning(f'billing_portal: stale customer {customer_id} — searching by email {body.email}')
+        # Auto-recovery: stale customer ID (wrong Stripe environment or deleted customer)
+        if 'No such customer' in err:
+            email = body.email
+            # If frontend didn't supply email (e.g. Google SSO), fetch from Clerk server-side
+            if not email and CLERK_SECRET_KEY:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        clerk_res = await client.get(
+                            f'https://api.clerk.com/v1/users/{body.clerk_user_id}',
+                            headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
+                        )
+                    if clerk_res.status_code == 200:
+                        ud = clerk_res.json()
+                        primary_id = ud.get('primary_email_address_id')
+                        for addr in ud.get('email_addresses', []):
+                            if not email or addr.get('id') == primary_id:
+                                email = addr.get('email_address', '')
+                                if addr.get('id') == primary_id:
+                                    break
+                except Exception as clerk_e:
+                    log.warning(f'billing_portal: Clerk email lookup failed: {clerk_e}')
+            if not email:
+                raise HTTPException(400, 'Could not resolve account email. Please contact support.')
+            log.warning(f'billing_portal: stale customer {customer_id} — searching by email {email}')
             try:
-                customers = stripe.Customer.list(email=body.email, limit=1)
+                customers = stripe.Customer.list(email=email, limit=1)
                 if customers.data:
                     new_cid = customers.data[0].id
                     log.info(f'billing_portal: found customer {new_cid} by email — updating DB')
