@@ -730,6 +730,12 @@ async def create_checkout_session(body: CheckoutRequest):
         # checkout page otherwise (needed for social-login users with no email in Clerk)
         if body.email:
             session_params['customer_email'] = body.email
+        # Copy clerk_user_id into subscription metadata so the cancellation webhook
+        # can identify the user without a DB lookup (Stripe session metadata is NOT
+        # automatically inherited by the subscription object).
+        session_params['subscription_data'] = {
+            'metadata': {'clerk_user_id': body.clerk_user_id}
+        }
         session = stripe.checkout.Session.create(**session_params)
         return {'url': session.url, 'session_id': session.id}
     except Exception as e:
@@ -913,10 +919,36 @@ async def stripe_webhook_canonical(request: Request):
             status=status,
             period_end_ts=sub.get('current_period_end'),
         )
-        if status != 'active' and clerk_uid:
-            discord_uid = get_discord_user_id(clerk_uid)
+        if status != 'active':
+            # Try metadata first (set at checkout for new subscriptions)
+            discord_uid = get_discord_user_id(clerk_uid) if clerk_uid else None
+
+            # Fallback: look up by Stripe customer_id in the DB
+            # (handles subscriptions created before subscription_data metadata was added)
+            if not discord_uid:
+                try:
+                    conn = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            'SELECT clerk_user_id, discord_user_id FROM subscriptions '
+                            'WHERE stripe_customer_id = %s LIMIT 1',
+                            (sub.get('customer'),)
+                        )
+                        row = cur.fetchone()
+                    conn.close()
+                    if row:
+                        if not clerk_uid:
+                            clerk_uid = row[0]
+                        discord_uid = row[1]
+                except Exception as db_err:
+                    log.warning(f'Discord revoke DB fallback failed: {db_err}')
+
             if discord_uid:
-                revoke_pro_role(discord_uid)
+                try:
+                    revoke_pro_role(discord_uid)
+                    log.info(f'Discord PRO role revoked for {clerk_uid} (status: {status})')
+                except Exception as e:
+                    log.warning(f'Discord revoke failed for {clerk_uid}: {e}')
 
     elif etype == 'invoice.payment_failed':
         cancel_subscription(data['customer'])
