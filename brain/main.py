@@ -65,7 +65,8 @@ from subscriptions import (
     link_discord, get_discord_user_id,
 )
 from discord_roles import (
-    grant_pro_role, revoke_pro_role, kick_from_server, exchange_code_for_user_id,
+    grant_pro_role, revoke_pro_role, kick_from_server, add_to_guild,
+    exchange_code_for_user_id,
 )
 from price_tracker import (
     init_db        as init_price_tracker_db,
@@ -1137,7 +1138,7 @@ async def discord_oauth_start(clerk_user_id: str):
         f'?client_id={DISCORD_CLIENT_ID}'
         f'&redirect_uri={redirect_uri}'
         f'&response_type=code'
-        f'&scope=identify'
+        f'&scope=identify%20guilds.join'
         f'&state={clerk_user_id}'
     )
     from fastapi.responses import RedirectResponse
@@ -1159,7 +1160,7 @@ async def discord_oauth_callback(code: str = '', state: str = '', error: str = '
     brain_url     = os.getenv('BRAIN_URL', 'https://polyvision-production.up.railway.app')
     redirect_uri  = f'{brain_url}/discord/oauth/callback'
 
-    discord_user_id, discord_error = exchange_code_for_user_id(code, redirect_uri)
+    discord_user_id, access_token, discord_error = exchange_code_for_user_id(code, redirect_uri)
     if not discord_user_id:
         return HTMLResponse(
             f'<html><body style="font-family:monospace;padding:20px;background:#1a1a2e;color:#ff6b6b">'
@@ -1171,12 +1172,19 @@ async def discord_oauth_callback(code: str = '', state: str = '', error: str = '
             status_code=500
         )
 
-    # Store the link
+    # Store the Discord link
     link_discord(clerk_user_id, discord_user_id)
 
-    # If user is already PRO, grant the role immediately
-    if is_pro(clerk_user_id):
-        grant_pro_role(discord_user_id)
+    # Auto-add user to the Discord server (guilds.join scope) + grant PRO role
+    # This replaces the manual invite flow — no invite acceptance needed.
+    if is_pro(clerk_user_id) and access_token:
+        added = add_to_guild(discord_user_id, access_token)
+        if not added:
+            # Fallback: try role-only grant (user might already be in server)
+            grant_pro_role(discord_user_id)
+    elif access_token:
+        # Not yet PRO — add to server anyway, role will be granted on checkout
+        add_to_guild(discord_user_id, access_token)
 
     # Close the popup and notify the parent window
     invite_html = f'<p>Join the server: <a href="{DISCORD_INVITE_URL}" target="_blank">Click here</a></p>' if DISCORD_INVITE_URL else ''
