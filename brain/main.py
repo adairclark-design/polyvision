@@ -1123,6 +1123,31 @@ DISCORD_CLIENT_SECRET = os.getenv('DISCORD_CLIENT_SECRET', '')
 DISCORD_INVITE_URL    = os.getenv('DISCORD_INVITE_URL', '')   # public invite link to the server
 
 
+
+@app.get('/discord/verify-access')
+async def discord_verify_access(clerk_user_id: str):
+    """
+    Called by the dashboard 'Open Server' button before opening Discord.
+    Ensures the user's PRO role is granted even if it was missed at OAuth time.
+    Returns {discord_url} to redirect to.
+    """
+    discord_url = f'https://discord.com/channels/{os.getenv("DISCORD_GUILD_ID", "1485011217381589022")}'
+    if not clerk_user_id:
+        return {'discord_url': discord_url, 'role_granted': False}
+
+    # Only grant role if user is actually PRO
+    if not is_pro(clerk_user_id):
+        return {'discord_url': discord_url, 'role_granted': False}
+
+    discord_uid = get_discord_user_id(clerk_user_id)
+    if discord_uid:
+        result = grant_pro_role(discord_uid)
+        log.info(f'verify-access: PRO role {"granted" if result else "failed"} for {clerk_user_id}')
+        return {'discord_url': discord_url, 'role_granted': result}
+
+    return {'discord_url': discord_url, 'role_granted': False}
+
+
 @app.get('/discord/oauth/start')
 async def discord_oauth_start(clerk_user_id: str):
     """
