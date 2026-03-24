@@ -370,6 +370,21 @@ window.openDiscordOAuth = function () {
   if (!popup) alert('Please allow popups to link your Discord account.');
 };
 
+window.openDiscordServer = async function () {
+  const user = window.Clerk?.user;
+  const discordUrl = 'https://discord.com/channels/1485011217381589022';
+  if (!user) { window.open(discordUrl, '_blank'); return; }
+  try {
+    // Verify + grant PRO role before opening Discord, in case it was missed at link time
+    const res = await fetch(`${BRAIN_URL}/discord/verify-access?clerk_user_id=${encodeURIComponent(user.id)}`);
+    const data = await res.json();
+    window.open(data.discord_url || discordUrl, '_blank');
+  } catch (e) {
+    window.open(discordUrl, '_blank');
+  }
+};
+
+
 // Listen for the callback popup to confirm Discord was linked
 window.addEventListener('message', (event) => {
   if (event.data?.type === 'discord_linked') {
