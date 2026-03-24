@@ -817,6 +817,7 @@ async def confirm_checkout(body: ConfirmCheckoutRequest):
 
 class PortalRequest(BaseModel):
     clerk_user_id: str
+    email:         str = ''
     return_url:    str = 'https://polyvision.app/dashboard/'
 
 @app.post('/billing/portal')
@@ -825,20 +826,60 @@ async def billing_portal(body: PortalRequest):
     Create a Stripe Customer Portal session so users can manage or cancel
     their subscription, update payment methods, and view invoices.
     Returns a {url} the frontend should redirect to.
+
+    Auto-recovery: if the stored stripe_customer_id is from the wrong Stripe
+    environment (e.g. live-mode customer with test-mode key), attempts to find
+    the customer by email and refreshes the DB record before retrying.
     """
     if not STRIPE_API_KEY:
         raise HTTPException(503, 'Stripe not configured.')
     sub = get_subscription(body.clerk_user_id)
-    if not sub or not sub.get('stripe_customer_id'):
-        raise HTTPException(404, 'No active subscription found for this user.')
+    customer_id = sub.get('stripe_customer_id') if sub else None
+    if not customer_id:
+        raise HTTPException(404, 'No subscription record found. Please subscribe first.')
     try:
         session = stripe.billing_portal.Session.create(
-            customer=sub['stripe_customer_id'],
+            customer=customer_id,
             return_url=body.return_url,
         )
         return {'url': session.url}
     except Exception as e:
-        raise HTTPException(400, str(e))
+        err = str(e)
+        # Auto-recovery: stale customer ID (wrong Stripe environment)
+        if 'No such customer' in err and body.email:
+            log.warning(f'billing_portal: stale customer {customer_id} — searching by email {body.email}')
+            try:
+                customers = stripe.Customer.list(email=body.email, limit=1)
+                if customers.data:
+                    new_cid = customers.data[0].id
+                    log.info(f'billing_portal: found customer {new_cid} by email — updating DB')
+                    # Update the DB with the valid customer ID
+                    try:
+                        _conn = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
+                        with _conn.cursor() as cur:
+                            cur.execute(
+                                'UPDATE subscriptions SET stripe_customer_id=%s, updated_at=NOW() '
+                                'WHERE clerk_user_id=%s',
+                                (new_cid, body.clerk_user_id)
+                            )
+                        _conn.commit(); _conn.close()
+                    except Exception as db_e:
+                        log.warning(f'billing_portal: DB update failed: {db_e}')
+                    # Retry portal with the correct customer ID
+                    session = stripe.billing_portal.Session.create(
+                        customer=new_cid,
+                        return_url=body.return_url,
+                    )
+                    return {'url': session.url}
+                else:
+                    raise HTTPException(404,
+                        'No Stripe customer found for your email in this mode. '
+                        'Please complete a new subscription first.')
+            except HTTPException:
+                raise
+            except Exception as retry_e:
+                raise HTTPException(400, f'Could not open billing portal: {retry_e}')
+        raise HTTPException(400, err)
 
 
 @app.post('/stripe/webhook')
