@@ -97,6 +97,7 @@ const state = {
   },
   filters: { minSize: 500, side: 'all' },
   sortBy: 'newest',  // 'newest' | 'largest'
+  sourceFilter: 'all',  // 'all' | 'POLYMARKET' | 'KALSHI'
   todayCount: 0,
   todayVolume: 0,
 };
@@ -639,6 +640,7 @@ function buildEventCard(ev) {
       </div>
       <div class="card-badges">
         <span class="tier-badge ${ev.tier}">${ev.tier === 'WHALE' ? '🐋' : '🔵'} ${ev.tier}</span>
+        <span class="source-badge ${(ev.source||'POLYMARKET').toLowerCase()}">${ev.source === 'KALSHI' ? 'KALSHI' : 'POLY'}</span>
       </div>
     </div>
     <div class="card-market">
@@ -865,6 +867,7 @@ function connectLiveFeed() {
             wallet_total_trades: parseInt(p.wallet_total_trades || 1),
             wallet_total_volume: parseFloat(p.wallet_total_volume || p.usd_value || 10000),
             timestamp:           p.timestamp ? new Date(p.timestamp).getTime() : Date.now(),
+            source:              p.source || 'POLYMARKET',
             historical:          true,   // flag: don't animate or alert
             whale: {
               id: p.wallet_address || `whale-${i}`,
@@ -911,6 +914,7 @@ function connectLiveFeed() {
           wallet_total_trades: parseInt(payload.wallet_total_trades || 1),
           wallet_total_volume: parseFloat(payload.wallet_total_volume || payload.usd_value || 10000),
           timestamp: payload.timestamp ? new Date(payload.timestamp).getTime() : Date.now(),
+          source: payload.source || 'POLYMARKET',
           // Assign random aesthetic elements to real wallets
           whale: {
             id: payload.wallet_address || `whale-${Date.now()}`,
@@ -1010,6 +1014,8 @@ function renderFeed() {
   events = events.filter(ev => {
     if (ev.usdValue < state.filters.minSize) return false;
     if (state.filters.side !== 'all' && ev.outcome !== state.filters.side) return false;
+    // Platform filter (All | Polymarket | Kalshi)
+    if (state.sourceFilter !== 'all' && (ev.source || 'POLYMARKET') !== state.sourceFilter) return false;
     return true;
   });
 
