@@ -1048,6 +1048,42 @@ async def stripe_webhook_canonical(request: Request):
         except Exception as e:
             log.warning(f'Discord revoke on payment failure: {e}')
 
+    elif etype == 'customer.deleted':
+        # A Stripe customer was deleted (e.g. via Dashboard). Revoke PRO immediately.
+        stripe_customer_id = data.get('id')
+        log.info(f'stripe webhook: customer.deleted for {stripe_customer_id}')
+        try:
+            _conn = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
+            with _conn.cursor() as cur:
+                cur.execute(
+                    'SELECT clerk_user_id, discord_user_id FROM subscriptions '
+                    'WHERE stripe_customer_id = %s LIMIT 1',
+                    (stripe_customer_id,)
+                )
+                row = _conn.cursor().fetchone() if False else cur.fetchone()
+            _conn.close()
+            if row:
+                clerk_uid, discord_uid = row[0], row[1]
+                # Update DB
+                cancel_subscription(stripe_customer_id)
+                # Revoke Clerk metadata
+                if CLERK_SECRET_KEY and clerk_uid:
+                    async with httpx.AsyncClient() as client:
+                        await client.patch(
+                            f'https://api.clerk.com/v1/users/{clerk_uid}/metadata',
+                            headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
+                            json={'public_metadata': {'tier': 'FREE'}},
+                        )
+                    log.info(f'customer.deleted: Clerk tier set to FREE for {clerk_uid}')
+                # Revoke Discord role
+                if discord_uid:
+                    try:
+                        revoke_pro_role(discord_uid)
+                    except Exception as de:
+                        log.warning(f'customer.deleted: Discord revoke failed: {de}')
+        except Exception as e:
+            log.warning(f'customer.deleted: revoke failed: {e}')
+
     return {'received': True}
 
 
@@ -1134,10 +1170,63 @@ async def discord_oauth_callback(code: str = '', state: str = '', error: str = '
 
 @app.get('/subscription/status')
 async def subscription_status(clerk_user_id: str):
-    """Return PRO status for a Clerk user — called by the dashboard on load."""
+    """Return PRO status — always verified against Stripe when DB says active.
+
+    This prevents stale PRO status when a customer is deleted or subscription
+    cancelled outside of normal webhook flow (e.g. via Stripe Dashboard).
+    """
     if not clerk_user_id:
         raise HTTPException(400, 'clerk_user_id required')
-    return get_subscription(clerk_user_id)
+    sub = get_subscription(clerk_user_id)
+
+    # If DB says active, verify with Stripe that the subscription actually exists
+    if sub.get('is_pro') and STRIPE_API_KEY and sub.get('stripe_customer_id'):
+        try:
+            # List subscriptions for this customer in Stripe
+            subs = stripe.Subscription.list(
+                customer=sub['stripe_customer_id'],
+                status='active',
+                limit=1,
+            )
+            if not subs.data:
+                # Stripe has no active subscription — DB is stale, revoke PRO
+                log.warning(f'subscription_status: DB says active but Stripe has none — revoking {clerk_user_id}')
+                cancel_subscription(sub['stripe_customer_id'])
+                # Revoke Clerk metadata
+                if CLERK_SECRET_KEY:
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            await client.patch(
+                                f'https://api.clerk.com/v1/users/{clerk_user_id}/metadata',
+                                headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
+                                json={'public_metadata': {'tier': 'FREE'}},
+                            )
+                    except Exception as ce:
+                        log.warning(f'subscription_status: Clerk revoke failed: {ce}')
+                # Return correct FREE status
+                sub['is_pro'] = False
+                sub['status'] = 'cancelled'
+        except stripe.error.InvalidRequestError:
+            # Customer doesn't exist in Stripe (deleted) — revoke PRO
+            log.warning(f'subscription_status: Stripe customer not found — revoking {clerk_user_id}')
+            cancel_subscription(sub['stripe_customer_id'])
+            if CLERK_SECRET_KEY:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        await client.patch(
+                            f'https://api.clerk.com/v1/users/{clerk_user_id}/metadata',
+                            headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
+                            json={'public_metadata': {'tier': 'FREE'}},
+                        )
+                except Exception:
+                    pass
+            sub['is_pro'] = False
+            sub['status'] = 'cancelled'
+        except Exception as se:
+            # If Stripe check fails (network, etc.), trust the DB to avoid false downgrades
+            log.warning(f'subscription_status: Stripe verify failed, trusting DB: {se}')
+
+    return sub
 
 
 # ── Profile Recalculation Cron ───────────────────────────────────────────────
