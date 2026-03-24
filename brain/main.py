@@ -950,6 +950,25 @@ async def stripe_webhook_canonical(request: Request):
                 except Exception as e:
                     log.warning(f'Discord revoke failed for {clerk_uid}: {e}')
 
+            # Revoke Clerk publicMetadata so the frontend immediately shows FREE
+            if CLERK_SECRET_KEY and clerk_uid:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        res = await client.patch(
+                            f'https://api.clerk.com/v1/users/{clerk_uid}/metadata',
+                            headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
+                            json={'public_metadata': {'tier': 'FREE'}},
+                        )
+                    if res.status_code == 200:
+                        log.info(f'Clerk tier set to FREE for {clerk_uid}')
+                    else:
+                        log.warning(f'Clerk metadata revoke failed for {clerk_uid}: {res.text}')
+                except Exception as e:
+                    log.warning(f'Clerk metadata revoke error for {clerk_uid}: {e}')
+
+            # Ensure DB status is consistent
+            cancel_subscription(sub.get('customer', ''))
+
     elif etype == 'invoice.payment_failed':
         cancel_subscription(data['customer'])
         log.warning(f'Payment failed — downgraded customer: {data["customer"]}')
