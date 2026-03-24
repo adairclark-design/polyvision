@@ -62,10 +62,40 @@ const WHALES = [
   },
 ];
 
+// ── Avatar: wallet-hash gradient (crypto-native identicon fallback) ──────────────
+// Used when no archetype portrait matches the handle (Kalshi trades, unknown wallets).
+// Derives a unique, consistent gradient + initial from the wallet address/handle string.
+function generateGradientAvatar(seed, handle) {
+  let hash = 0;
+  const s = seed || handle || '?';
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  const hue1 = hash % 360;
+  const hue2 = (hue1 + 55 + ((hash >> 4) % 60)) % 360;
+
+  // First meaningful word initial (skip "The", "of", articles)
+  const words = (handle || seed || '').split(/\s+/)
+    .filter(w => !['the','of','a','an','unknown'].includes(w.toLowerCase()));
+  let initial = (words[0] || '?')[0].toUpperCase();
+  if (!initial || initial === '0' || initial === 'K') initial = initial || '⬡'; // hex/kalshi fallback
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">
+    <defs><radialGradient id="bg" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="hsl(${hue1},65%,42%)"/>
+      <stop offset="100%" stop-color="hsl(${hue2},80%,16%)"/>
+    </radialGradient></defs>
+    <circle cx="40" cy="40" r="40" fill="url(#bg)"/>
+    <text x="40" y="40" dominant-baseline="central" text-anchor="middle"
+          font-size="30" fill="rgba(255,255,255,0.92)" font-weight="700"
+          font-family="Inter,system-ui,sans-serif">${initial}</text>
+  </svg>`;
+  try { return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg))); }
+  catch { return 'data:image/svg+xml;base64,' + btoa(svg); }
+}
+
 // ── Avatar: deterministic archetype → image mapping ──────────────────────────
-// Returns the correct avatar for a whale handle like "The Analyst of Boston"
-// by extracting the archetype keyword and mapping it to a portrait image.
-function getAvatarForHandle(handle) {
+// 1st choice: cinematic portrait matched by archetype keyword in handle
+// 2nd choice: unique wallet-hash gradient (for Kalshi/unknown traders)
+function getAvatarForHandle(handle, walletAddress) {
   const h = (handle || '').toLowerCase();
   const archetypeMap = [
     ['oracle',     '/assets/avatar_oracle.png'],
@@ -82,7 +112,8 @@ function getAvatarForHandle(handle) {
   for (const [key, img] of archetypeMap) {
     if (h.includes(key)) return img;
   }
-  return '/assets/avatar_oracle.png';  // fallback: oracle
+  // Fallback: unique gradient derived from wallet address (crypto-native identicon)
+  return generateGradientAvatar(walletAddress || handle, handle);
 }
 
 // ── Data: Market Templates ────────────────────────────────────────────────────
@@ -896,7 +927,7 @@ function connectLiveFeed() {
               id: p.wallet_address || `whale-${i}`,
               handle:    p.trader_handle || 'Unknown Whale',
               wallet:    p.wallet_address || '',
-              avatar:    getAvatarForHandle(p.trader_handle || p.trader_pseudonym || ''),
+              avatar:    getAvatarForHandle(p.trader_handle || p.trader_pseudonym || '', p.wallet_address || ''),
               badge:     p.wallet_win_rate >= 0.6 ? 'Shark' : (p.wallet_win_rate !== undefined ? 'Pro' : 'Newcomer'),
               winRate:   p.wallet_win_rate !== undefined ? parseFloat(p.wallet_win_rate) : 0,
               roi30d:    parseFloat(p.wallet_roi_30d || 0),
@@ -943,7 +974,7 @@ function connectLiveFeed() {
             id: payload.wallet_address || `whale-${Date.now()}`,
             handle: payload.trader_handle || 'Unknown Whale',
             wallet: payload.wallet_address || '',
-            avatar: getAvatarForHandle(payload.trader_handle || payload.trader_pseudonym || ''),
+            avatar: getAvatarForHandle(payload.trader_handle || payload.trader_pseudonym || '', payload.wallet_address || ''),
             badge: payload.wallet_win_rate >= 0.6 ? 'Shark' : (payload.wallet_win_rate !== undefined ? 'Pro' : 'Newcomer'),
             winRate: payload.wallet_win_rate !== undefined ? parseFloat(payload.wallet_win_rate) : 0,
             roi30d: parseFloat(payload.wallet_roi_30d || 0),
