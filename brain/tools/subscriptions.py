@@ -71,6 +71,7 @@ def is_pro(clerk_user_id: str) -> bool:
                 SELECT status, current_period_end
                 FROM subscriptions
                 WHERE clerk_user_id = %s
+                ORDER BY updated_at DESC
                 LIMIT 1
             """, (clerk_user_id,))
             row = cur.fetchone()
@@ -106,6 +107,7 @@ def get_subscription(clerk_user_id: str) -> dict:
                 SELECT status, plan, current_period_end, stripe_customer_id, discord_user_id
                 FROM subscriptions
                 WHERE clerk_user_id = %s
+                ORDER BY updated_at DESC
                 LIMIT 1
             """, (clerk_user_id,))
             row = cur.fetchone()
@@ -135,7 +137,7 @@ def get_discord_user_id(clerk_user_id: str) -> str | None:
         conn = _connect()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT discord_user_id FROM subscriptions WHERE clerk_user_id = %s LIMIT 1",
+                "SELECT discord_user_id FROM subscriptions WHERE clerk_user_id = %s ORDER BY updated_at DESC LIMIT 1",
                 (clerk_user_id,)
             )
             row = cur.fetchone()
