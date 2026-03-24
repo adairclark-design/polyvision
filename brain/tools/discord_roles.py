@@ -81,6 +81,27 @@ def revoke_pro_role(discord_user_id: str) -> bool:
         return False
 
 
+def kick_from_server(discord_user_id: str) -> bool:
+    """
+    Remove a Discord user from the PolyVision guild entirely.
+    Called on subscription cancellation so the invite link works again if they resubscribe.
+    Returns True on success, False on failure (always safe to call).
+    """
+    if not discord_user_id or not _enabled():
+        return False
+    try:
+        url = f"{DISCORD_API}/guilds/{DISCORD_GUILD_ID}/members/{discord_user_id}"
+        r = requests.delete(url, headers=_headers(), timeout=10)
+        if r.status_code in (200, 201, 204):
+            log.info(f"Discord user {discord_user_id} kicked from server")
+            return True
+        log.error(f"Failed to kick Discord user: {r.status_code} {r.text}")
+        return False
+    except Exception as e:
+        log.error(f"kick_from_server error: {e}")
+        return False
+
+
 def exchange_code_for_user_id(code: str, redirect_uri: str) -> tuple[str | None, str | None]:
     """
     Complete Discord OAuth2 flow:
