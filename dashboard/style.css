@@ -712,6 +712,30 @@ button {
     color: var(--amber);
 }
 
+/* ── Platform Source Badge (POLYMARKET | KALSHI) ─────────────────────────── */
+.source-badge {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: var(--radius-full);
+    opacity: 0.75;
+    margin-left: 4px;
+}
+
+.source-badge.polymarket {
+    background: rgba(77, 142, 255, 0.12);
+    color: var(--blue-accent);
+}
+
+.source-badge.kalshi {
+    background: rgba(139, 92, 246, 0.15);
+    color: var(--purple);
+    opacity: 1;
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.25);
+}
+
 .card-market {
     font-size: 13px;
     color: var(--text-secondary);
