@@ -422,7 +422,12 @@ window.startStripeCheckout = async function () {
   const btn = $('btnGoStripe');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Redirecting to Stripe…'; }
   try {
-    const email = user.primaryEmailAddress?.emailAddress || '';
+    // Pull primary email first; fall back to any verified email (covers social-login
+    // accounts where primaryEmailAddress may be null even if emailAddresses is populated).
+    const email = user.primaryEmailAddress?.emailAddress
+                || user.emailAddresses?.[0]?.emailAddress
+                || '';
+
     const origin = window.location.origin;
     const resp = await fetch(`${BRAIN_URL}/checkout/create-session`, {
       method: 'POST',
