@@ -181,10 +181,13 @@ def add_to_guild(discord_user_id: str, access_token: str) -> bool:
             payload["roles"] = [DISCORD_PRO_ROLE_ID]
         r = requests.put(url, json=payload, headers=_headers(), timeout=10)
         if r.status_code == 201:
-            log.info(f"Discord: user {discord_user_id} added to server + PRO role granted")
+            log.info(f"Discord: user {discord_user_id} added to server — now granting PRO role")
+            # Explicitly grant the role separately — the 'roles' field in PUT /members
+            # is silently ignored if the bot lacks MANAGE_ROLES at the time of the PUT.
+            grant_pro_role(discord_user_id)
             return True
         if r.status_code == 204:
-            # Already a member — still try to grant role separately
+            # Already a member — grant the PRO role
             log.info(f"Discord: user {discord_user_id} already in server — granting PRO role")
             grant_pro_role(discord_user_id)
             return True
