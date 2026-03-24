@@ -162,7 +162,11 @@ def poll_kalshi(brain_url: str = None) -> int:
         return 0
 
     if resp.status_code == 401:
-        log.error('[Kalshi] Authentication failed (401). Check KALSHI_ACCESS_KEY and KALSHI_PRIVATE_KEY.')
+        log.error(
+            f'[Kalshi] Authentication failed (401).\n'
+            f'  KALSHI-ACCESS-KEY: {KALSHI_ACCESS_KEY[:8]}...\n'
+            f'  Response body: {resp.text[:400]}'
+        )
         return 0
     if resp.status_code != 200:
         log.error(f'[Kalshi] API error {resp.status_code}: {resp.text[:200]}')
