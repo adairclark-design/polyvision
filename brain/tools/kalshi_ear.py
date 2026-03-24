@@ -21,6 +21,10 @@ Self-annealing log:
   2026-03-23: Fixed 401 — Kalshi signature must use BASE PATH ONLY (no query string).
               i.e. sign(ts + "GET" + "/trade-api/v2/markets/trades"), NOT the ?limit=200 part.
               Query params are passed separately in the request, not in the signed message.
+  2026-03-23: ROOT CAUSE of all 401s found via diagnostic logging:
+              Kalshi moved their API from trading-api.kalshi.com to api.elections.kalshi.com.
+              Response body: "API has been moved to https://api.elections.kalshi.com/"
+              Fix: update KALSHI_BASE to https://api.elections.kalshi.com
 """
 
 import os
@@ -36,7 +40,7 @@ from typing import Optional
 log = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────────────────
-KALSHI_BASE       = 'https://trading-api.kalshi.com'
+KALSHI_BASE        = 'https://api.elections.kalshi.com'   # migrated from trading-api.kalshi.com
 KALSHI_ACCESS_KEY = os.getenv('KALSHI_ACCESS_KEY', '')
 KALSHI_PRIVATE_KEY = os.getenv('KALSHI_PRIVATE_KEY', '')   # PEM with \\n escaped in Railway
 KALSHI_THRESHOLD  = float(os.getenv('KALSHI_THRESHOLD', '5000'))   # $5,000 minimum
