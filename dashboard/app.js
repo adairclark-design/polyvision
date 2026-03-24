@@ -1669,6 +1669,32 @@ $('sortSize').onclick = () => {
   renderFeed();
 };
 
+// ── Platform Source Filter ─────────────────────────────────────────────────────
+// Sets platform filter (all | POLYMARKET | KALSHI), persists choice to localStorage.
+window.setSourceFilter = function(platform) {
+  state.sourceFilter = platform;
+  localStorage.setItem('pv_source_filter', platform);
+
+  const btnMap = { all: 'pfBtnAll', POLYMARKET: 'pfBtnPoly', KALSHI: 'pfBtnKalshi' };
+  document.querySelectorAll('.platform-btn').forEach(b => b.classList.remove('active'));
+  const btn = $( btnMap[platform] );
+  if (btn) btn.classList.add('active');
+
+  renderFeed();
+};
+
+// Restore saved platform preference on load
+(function() {
+  const saved = localStorage.getItem('pv_source_filter') || 'all';
+  if (saved !== 'all') {
+    state.sourceFilter = saved;
+    const btnMap = { all: 'pfBtnAll', POLYMARKET: 'pfBtnPoly', KALSHI: 'pfBtnKalshi' };
+    document.querySelectorAll('.platform-btn').forEach(b => b.classList.remove('active'));
+    const btn = $(btnMap[saved]);
+    if (btn) btn.classList.add('active');
+  }
+})();
+
 // ── View Router ─────────────────────────────────────────────────────────────
 const VIEWS = {
   'nav-pulse':    { col: 'pulseCol',   lb: true  },
