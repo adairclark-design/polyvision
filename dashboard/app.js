@@ -6,7 +6,7 @@ const WHALES = [
   {
     id: 'oracle',
     handle: 'The Oracle of Oregon',
-    avatar: 'assets/avatar_oracle.png',
+    avatar: '/assets/avatar_oracle.png',
     wallet: '0xDeAd...f1234',
     winRate: 0.92,
     roi30d: 0.38,
@@ -25,7 +25,7 @@ const WHALES = [
   {
     id: 'strategist',
     handle: 'The Strategist of Chicago',
-    avatar: 'assets/avatar_strategist.png',
+    avatar: '/assets/avatar_strategist.png',
     wallet: '0xC4f3...a901',
     winRate: 0.78,
     roi30d: 0.21,
@@ -44,7 +44,7 @@ const WHALES = [
   {
     id: 'pioneer',
     handle: 'The Pioneer of the Pacific Northwest',
-    avatar: 'assets/avatar_pioneer.png',
+    avatar: '/assets/avatar_pioneer.png',
     wallet: '0x9b2E...de45',
     winRate: 0.71,
     roi30d: 0.15,
@@ -61,6 +61,29 @@ const WHALES = [
     ],
   },
 ];
+
+// ── Avatar: deterministic archetype → image mapping ──────────────────────────
+// Returns the correct avatar for a whale handle like "The Analyst of Boston"
+// by extracting the archetype keyword and mapping it to a portrait image.
+function getAvatarForHandle(handle) {
+  const h = (handle || '').toLowerCase();
+  const archetypeMap = [
+    ['oracle',     '/assets/avatar_oracle.png'],
+    ['strategist', '/assets/avatar_strategist.png'],
+    ['pioneer',    '/assets/avatar_pioneer.png'],
+    ['analyst',    '/assets/avatar_analyst.png'],
+    ['tactician',  '/assets/avatar_tactician.png'],
+    ['visionary',  '/assets/avatar_visionary.png'],
+    ['architect',  '/assets/avatar_architect.png'],
+    ['sentinel',   '/assets/avatar_sentinel.png'],
+    ['navigator',  '/assets/avatar_navigator.png'],
+    ['scholar',    '/assets/avatar_scholar.png'],
+  ];
+  for (const [key, img] of archetypeMap) {
+    if (h.includes(key)) return img;
+  }
+  return '/assets/avatar_oracle.png';  // fallback: oracle
+}
 
 // ── Data: Market Templates ────────────────────────────────────────────────────
 const MARKETS = [
@@ -873,7 +896,7 @@ function connectLiveFeed() {
               id: p.wallet_address || `whale-${i}`,
               handle:    p.trader_handle || 'Unknown Whale',
               wallet:    p.wallet_address || '',
-              avatar:    pickRandom(WHALES).avatar,
+              avatar:    getAvatarForHandle(p.trader_handle || p.trader_pseudonym || ''),
               badge:     p.wallet_win_rate >= 0.6 ? 'Shark' : (p.wallet_win_rate !== undefined ? 'Pro' : 'Newcomer'),
               winRate:   p.wallet_win_rate !== undefined ? parseFloat(p.wallet_win_rate) : 0,
               roi30d:    parseFloat(p.wallet_roi_30d || 0),
@@ -920,7 +943,7 @@ function connectLiveFeed() {
             id: payload.wallet_address || `whale-${Date.now()}`,
             handle: payload.trader_handle || 'Unknown Whale',
             wallet: payload.wallet_address || '',
-            avatar: pickRandom(WHALES).avatar,
+            avatar: getAvatarForHandle(payload.trader_handle || payload.trader_pseudonym || ''),
             badge: payload.wallet_win_rate >= 0.6 ? 'Shark' : (payload.wallet_win_rate !== undefined ? 'Pro' : 'Newcomer'),
             winRate: payload.wallet_win_rate !== undefined ? parseFloat(payload.wallet_win_rate) : 0,
             roi30d: parseFloat(payload.wallet_roi_30d || 0),
