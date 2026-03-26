@@ -97,7 +97,7 @@ function generateGradientAvatar(seed, handle) {
 // Falls back to handle if wallet is unavailable.
 function getAvatarForHandle(handle, walletAddress) {
   const seed = encodeURIComponent(walletAddress || handle || 'whale');
-  return `https://api.dicebear.com/9.x/lorelei/svg?seed=${seed}&backgroundColor=1a2332,14202e,0f1923&backgroundType=gradientLinear`;
+  return `https://api.dicebear.com/9.x/adventurer/svg?seed=${seed}&backgroundColor=1a2332,14202e,0f1923&backgroundType=gradientLinear`;
 }
 
 // ── Data: Market Templates ────────────────────────────────────────────────────
