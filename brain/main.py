@@ -941,15 +941,21 @@ async def stripe_webhook_canonical(request: Request):
              else event['data']['object'])
 
     if etype == 'checkout.session.completed':
-        clerk_user_id = data.get('metadata', {}).get('clerk_user_id') or data.get('client_reference_id', '')
+        data_meta = getattr(data, 'metadata', None) or {}
+        clerk_user_id = (
+            data_meta.get('clerk_user_id')
+            or getattr(data, 'client_reference_id', None) or ''
+        )
         if clerk_user_id:
             try:
-                sub = stripe.Subscription.retrieve(data['subscription'])
-                period_end = sub.get('current_period_end')
+                sub_id_raw = getattr(data, 'subscription', None)
+                sub_id_str = getattr(sub_id_raw, 'id', None) if hasattr(sub_id_raw, 'id') else sub_id_raw
+                sub = stripe.Subscription.retrieve(sub_id_str) if sub_id_str else None
+                period_end = getattr(sub, 'current_period_end', None) if sub else None
                 upsert_subscription(
                     clerk_user_id=clerk_user_id,
-                    stripe_customer_id=data['customer'],
-                    stripe_sub_id=data['subscription'],
+                    stripe_customer_id=getattr(data, 'customer', None),
+                    stripe_sub_id=sub_id_str,
                     status='active',
                     period_end_ts=period_end,
                 )
@@ -973,14 +979,15 @@ async def stripe_webhook_canonical(request: Request):
 
     elif etype in ('customer.subscription.deleted', 'customer.subscription.updated'):
         sub    = data
-        status = sub['status']   # 'active','past_due','cancelled','unpaid'
-        clerk_uid = sub.get('metadata', {}).get('clerk_user_id', '')
+        status = getattr(sub, 'status', 'unknown')
+        sub_meta = getattr(sub, 'metadata', None) or {}
+        clerk_uid = sub_meta.get('clerk_user_id', '')
         upsert_subscription(
             clerk_user_id=clerk_uid,
-            stripe_customer_id=sub['customer'],
-            stripe_sub_id=sub['id'],
+            stripe_customer_id=getattr(sub, 'customer', None),
+            stripe_sub_id=getattr(sub, 'id', None),
             status=status,
-            period_end_ts=sub.get('current_period_end'),
+            period_end_ts=getattr(sub, 'current_period_end', None),
         )
         if status != 'active':
             # Try metadata first (set at checkout for new subscriptions)
@@ -995,7 +1002,7 @@ async def stripe_webhook_canonical(request: Request):
                         cur.execute(
                             'SELECT clerk_user_id, discord_user_id FROM subscriptions '
                             'WHERE stripe_customer_id = %s LIMIT 1',
-                            (sub.get('customer'),)
+                            (getattr(sub, 'customer', None),)
                         )
                         row = cur.fetchone()
                     conn.close()
@@ -1045,17 +1052,17 @@ async def stripe_webhook_canonical(request: Request):
                     log.warning(f'Clerk metadata revoke error for {clerk_uid}: {e}')
 
             # Ensure DB status is consistent
-            cancel_subscription(sub.get('customer', ''))
+            cancel_subscription(getattr(sub, 'customer', '') or '')
 
     elif etype == 'invoice.payment_failed':
-        cancel_subscription(data['customer'])
-        log.warning(f'Payment failed — downgraded customer: {data["customer"]}')
+        cancel_subscription(getattr(data, 'customer', None))
+        log.warning(f'Payment failed — downgraded customer: {getattr(data, "customer", None)}')
         try:
             conn = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
             with conn.cursor() as cur:
                 cur.execute(
                     'SELECT clerk_user_id, discord_user_id FROM subscriptions WHERE stripe_customer_id = %s LIMIT 1',
-                    (data['customer'],)
+                    (getattr(data, 'customer', None),)
                 )
                 row = cur.fetchone()
             conn.close()
