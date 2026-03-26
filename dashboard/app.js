@@ -466,7 +466,7 @@ window.startStripeCheckout = async function () {
       body: JSON.stringify({
         clerk_user_id: user.id,
         email,
-        success_url: `${origin}/dashboard/?upgrade=success`,
+        success_url: `${origin}/dashboard/?upgrade=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url:  `${origin}/dashboard/?upgrade=cancelled`,
       }),
     });
