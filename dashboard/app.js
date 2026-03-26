@@ -92,28 +92,12 @@ function generateGradientAvatar(seed, handle) {
   catch { return 'data:image/svg+xml;base64,' + btoa(svg); }
 }
 
-// ── Avatar: deterministic archetype → image mapping ──────────────────────────
-// 1st choice: cinematic portrait matched by archetype keyword in handle
-// 2nd choice: unique wallet-hash gradient (for Kalshi/unknown traders)
+// ── Avatar: DiceBear lorelei — unique illustrated portrait per trader ─────────
+// Seeded by wallet address so each trader always gets the same avatar.
+// Falls back to handle if wallet is unavailable.
 function getAvatarForHandle(handle, walletAddress) {
-  const h = (handle || '').toLowerCase();
-  const archetypeMap = [
-    ['oracle',     '/assets/avatar_oracle.png'],
-    ['strategist', '/assets/avatar_strategist.png'],
-    ['pioneer',    '/assets/avatar_pioneer.png'],
-    ['analyst',    '/assets/avatar_analyst.png'],
-    ['tactician',  '/assets/avatar_tactician.png'],
-    ['visionary',  '/assets/avatar_visionary.png'],
-    ['architect',  '/assets/avatar_architect.png'],
-    ['sentinel',   '/assets/avatar_sentinel.png'],
-    ['navigator',  '/assets/avatar_navigator.png'],
-    ['scholar',    '/assets/avatar_scholar.png'],
-  ];
-  for (const [key, img] of archetypeMap) {
-    if (h.includes(key)) return img;
-  }
-  // Fallback: unique gradient derived from wallet address (crypto-native identicon)
-  return generateGradientAvatar(walletAddress || handle, handle);
+  const seed = encodeURIComponent(walletAddress || handle || 'whale');
+  return `https://api.dicebear.com/9.x/lorelei/svg?seed=${seed}&backgroundColor=1a2332,14202e,0f1923&backgroundType=gradientLinear`;
 }
 
 // ── Data: Market Templates ────────────────────────────────────────────────────
