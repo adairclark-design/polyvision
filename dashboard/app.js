@@ -92,27 +92,40 @@ function generateGradientAvatar(seed, handle) {
   catch { return 'data:image/svg+xml;base64,' + btoa(svg); }
 }
 
-// ── Avatar: 10 bespoke editorial-illustration portraits, assigned by wallet hash ──
-// Each whale deterministically maps to one of 10 premium illustrated portraits.
+// ── Avatar: 20 bespoke editorial-illustration portraits, assigned by wallet hash ──
+// Each whale deterministically maps to one of 20 premium illustrated portraits.
 // Same wallet address always resolves to the same avatar.
 const WHALE_AVATARS = [
-  '/assets/whale_avatar_1.png',
-  '/assets/whale_avatar_2.png',
-  '/assets/whale_avatar_3.png',
-  '/assets/whale_avatar_4.png',
-  '/assets/whale_avatar_5.png',
-  '/assets/whale_avatar_6.png',
-  '/assets/whale_avatar_7.png',
-  '/assets/whale_avatar_8.png',
-  '/assets/whale_avatar_9.png',
-  '/assets/whale_avatar_10.png',
+  '/assets/whale_avatar_1.png',  '/assets/whale_avatar_2.png',
+  '/assets/whale_avatar_3.png',  '/assets/whale_avatar_4.png',
+  '/assets/whale_avatar_5.png',  '/assets/whale_avatar_6.png',
+  '/assets/whale_avatar_7.png',  '/assets/whale_avatar_8.png',
+  '/assets/whale_avatar_9.png',  '/assets/whale_avatar_10.png',
+  '/assets/whale_avatar_11.png', '/assets/whale_avatar_12.png',
+  '/assets/whale_avatar_13.png', '/assets/whale_avatar_14.png',
+  '/assets/whale_avatar_15.png', '/assets/whale_avatar_16.png',
+  '/assets/whale_avatar_17.png', '/assets/whale_avatar_18.png',
+  '/assets/whale_avatar_19.png', '/assets/whale_avatar_20.png',
 ];
+
+// Deterministic wallet hash — shared by avatar picker and accent color
+function _walletHash(seed) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return h;
+}
+
 function getAvatarForHandle(handle, walletAddress) {
   const seed = walletAddress || handle || 'whale';
-  // Simple deterministic hash: sum char codes mod pool size
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
-  return WHALE_AVATARS[hash % WHALE_AVATARS.length];
+  return WHALE_AVATARS[_walletHash(seed) % WHALE_AVATARS.length];
+}
+
+// Unique HSL accent color per trader — used as identity ring on avatar.
+// 20 portraits × 360 hues = effectively unique per trader in any real feed.
+function traderAccentColor(walletAddress, handle) {
+  const seed = walletAddress || handle || 'whale';
+  const hue = _walletHash(seed) % 360;
+  return `hsl(${hue}, 70%, 58%)`;
 }
 
 // ── Data: Market Templates ────────────────────────────────────────────────────
@@ -710,7 +723,8 @@ function buildEventCard(ev) {
   <div class="event-card ${sideClass}-card tier-${tierClass}" id="card-${ev.id}" data-id="${ev.id}" onclick="openTradeModal('${ev.id}')">
     <span class="expand-hint">Click for details</span>
     <div class="card-top">
-      <img class="card-avatar ${sideClass}" src="${ev.whale.avatar}" alt="${ev.whale.handle}" />
+      <img class="card-avatar ${sideClass}" src="${ev.whale.avatar}" alt="${ev.whale.handle}"
+           style="outline: 2.5px solid ${traderAccentColor(ev.whale.wallet, ev.whale.handle)}; outline-offset: 1px;" />
       <div class="card-meta">
         <div class="card-handle">${ev.whale.handle}</div>
         <div class="card-time">${timeAgo(ev.timestamp)}</div>
@@ -1500,7 +1514,8 @@ window.openTradeModal = function (eventId) {
   modalContent.innerHTML = `
       <!-- ── Trade Header ── -->
       <div class="modal-trade-header">
-        <img class="modal-avatar" src="${whale.avatar}" alt="${whale.handle}" />
+        <img class="modal-avatar" src="${whale.avatar}" alt="${whale.handle}"
+             style="outline: 3px solid ${traderAccentColor(whale.wallet, whale.handle)}; outline-offset: 2px;" />
         <div>
           <div class="modal-handle">${whale.handle}</div>
           <div class="modal-wallet">${whale.wallet} · ${whale.dominantCategory}</div>
