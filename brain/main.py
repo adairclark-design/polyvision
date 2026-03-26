@@ -769,22 +769,22 @@ async def confirm_checkout(body: ConfirmCheckoutRequest):
         log.error(f'confirm_checkout: cannot retrieve session {body.session_id}: {e}')
         raise HTTPException(400, f'Could not retrieve checkout session: {e}')
 
-    payment_status = session.get('payment_status', 'unpaid')
+    payment_status = getattr(session, 'payment_status', 'unpaid')
     if payment_status != 'paid':
         log.info(f'confirm_checkout: session {body.session_id} not paid yet ({payment_status})')
         return {'is_pro': False, 'payment_status': payment_status}
 
-    # Extract subscription details
-    sub         = session.get('subscription') or {}
-    sub_id      = sub.get('id')      if isinstance(sub, dict) else getattr(sub, 'id', None)
-    customer_id = session.get('customer')
-    period_end  = (sub.get('current_period_end') if isinstance(sub, dict)
-                   else getattr(sub, 'current_period_end', None))
+    # Extract subscription details — session.subscription is an expanded Subscription object
+    sub         = getattr(session, 'subscription', None)
+    sub_id      = getattr(sub, 'id', None)      if sub else None
+    customer_id = getattr(session, 'customer', None)
+    period_end  = getattr(sub, 'current_period_end', None) if sub else None
 
     # Prefer session metadata for Clerk user ID; fall back to request body
+    metadata  = getattr(session, 'metadata', None) or {}
     clerk_uid = (
-        (session.get('metadata') or {}).get('clerk_user_id')
-        or session.get('client_reference_id')
+        metadata.get('clerk_user_id')
+        or getattr(session, 'client_reference_id', None)
         or body.clerk_user_id
     )
 
