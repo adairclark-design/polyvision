@@ -92,12 +92,27 @@ function generateGradientAvatar(seed, handle) {
   catch { return 'data:image/svg+xml;base64,' + btoa(svg); }
 }
 
-// ── Avatar: DiceBear lorelei — unique illustrated portrait per trader ─────────
-// Seeded by wallet address so each trader always gets the same avatar.
-// Falls back to handle if wallet is unavailable.
+// ── Avatar: 10 bespoke editorial-illustration portraits, assigned by wallet hash ──
+// Each whale deterministically maps to one of 10 premium illustrated portraits.
+// Same wallet address always resolves to the same avatar.
+const WHALE_AVATARS = [
+  '/assets/whale_avatar_1.png',
+  '/assets/whale_avatar_2.png',
+  '/assets/whale_avatar_3.png',
+  '/assets/whale_avatar_4.png',
+  '/assets/whale_avatar_5.png',
+  '/assets/whale_avatar_6.png',
+  '/assets/whale_avatar_7.png',
+  '/assets/whale_avatar_8.png',
+  '/assets/whale_avatar_9.png',
+  '/assets/whale_avatar_10.png',
+];
 function getAvatarForHandle(handle, walletAddress) {
-  const seed = encodeURIComponent(walletAddress || handle || 'whale');
-  return `https://api.dicebear.com/9.x/adventurer/svg?seed=${seed}&backgroundColor=1a2332,14202e,0f1923&backgroundType=gradientLinear`;
+  const seed = walletAddress || handle || 'whale';
+  // Simple deterministic hash: sum char codes mod pool size
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  return WHALE_AVATARS[hash % WHALE_AVATARS.length];
 }
 
 // ── Data: Market Templates ────────────────────────────────────────────────────
