@@ -1489,9 +1489,9 @@ window.openTradeModal = function (eventId) {
     `<span class="dot ${i < conviction ? 'filled' + (conviction <= 5 ? ' risk' : '') : ''}"></span>`
   ).join('');
 
-  const chipsHtml = ev.reasoningChips.map(c => `<span class="chip">${c}</span>`).join('');
+  const chipsHtml = (ev.reasoningChips || []).map(c => `<span class="chip">${c}</span>`).join('');
 
-  const recentHtml = whale.recentTrades.map(t => `
+  const recentHtml = (whale.recentTrades || []).map(t => `
         <div class="recent-trade-row">
           <span class="trade-outcome ${t.outcome.toLowerCase()}">${t.outcome}</span>
           <span class="trade-market">${t.market.slice(0, 38)}${t.market.length > 38 ? '…' : ''}</span>
