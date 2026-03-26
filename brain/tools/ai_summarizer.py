@@ -23,7 +23,7 @@ load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 MAX_SUMMARY_LEN = 280
-MAX_RETRIES     = 2
+MAX_RETRIES     = 3
 DISCLAIMER_TAG  = "Trade at your own risk."
 
 # Lazy import — market_context needs Redis which may not be available at import time
@@ -141,7 +141,7 @@ def generate_summary(payload: dict, live_context: str = "") -> str:
         log.warning("OPENAI_API_KEY not set. Using fallback summary.")
         return fallback_summary(payload)
 
-    from openai import OpenAI, RateLimitError, APITimeoutError
+    from openai import OpenAI, RateLimitError, APITimeoutError, InternalServerError
     client = OpenAI(api_key=OPENAI_API_KEY)
 
     extra_instruction = ""
@@ -177,7 +177,14 @@ def generate_summary(payload: dict, live_context: str = "") -> str:
             log.warning("Rate limited by OpenAI. Backing off 10s.")
             time.sleep(10)
         except APITimeoutError:
-            log.warning(f"OpenAI timeout on attempt {attempt+1}.")
+            log.warning(f"OpenAI timeout on attempt {attempt+1}. Retrying...")
+            time.sleep(2 ** attempt)  # 1s, 2s, 4s
+        except InternalServerError as e:
+            # OpenAI server-side 500 — always transient, retry with backoff
+            backoff = 2 ** attempt  # 1s, 2s, 4s
+            log.warning(f"OpenAI server error on attempt {attempt+1} (HTTP 500). "
+                        f"Retrying in {backoff}s: {e}")
+            time.sleep(backoff)
         except Exception as e:
             log.error(f"OpenAI error on attempt {attempt+1}: {e}")
             break
