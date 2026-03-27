@@ -80,6 +80,7 @@ def build_alert(trade_event: dict, whale_profile: dict | None) -> dict | None:
         "disclaimer":             DISCLAIMER,
         "timestamp":              datetime.now(timezone.utc).isoformat(),
         "source_trade_id":        trade_event.get("id", ""),
+        "source":                 trade_event.get("source", "POLYMARKET").upper(),
     }
 
     log.info(
