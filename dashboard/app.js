@@ -1,30 +1,134 @@
-// jsDelivr CDN serves these directly from GitHub — bypasses Cloudflare SPA routing
-const _CDN = 'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets';
+/* ── PolyVision Command Center — Application Logic ─────────────────────────── */
+'use strict';
+
+// ── Data: Whale Personas ─────────────────────────────────────────────────────
 const WHALES = [
-  { id:'w1',  handle:'The Oracle of Oregon',         avatar:`${_CDN}/whale_avatar_1.png`,  winRate:0.92, roi30d:0.38, totalVolume:2840000, totalTrades:187, badge:'92% Win Rate', sparkData:[0,4,2,8,6,12,9,15,11,18,14,22,19,28,24,31,27,35,30,38] },
-  { id:'w2',  handle:'The Strategist of Chicago',    avatar:`${_CDN}/whale_avatar_2.png`,  winRate:0.78, roi30d:0.21, totalVolume:1520000, totalTrades:214, badge:'78% Win Rate', sparkData:[10,8,12,6,15,10,18,14,20,16,22,17,25,20,28,22,26,23,29,25] },
-  { id:'w3',  handle:'The Pioneer of the Pacific Northwest', avatar:`${_CDN}/whale_avatar_3.png`, winRate:0.71, roi30d:0.15, totalVolume:980000, totalTrades:156, badge:'71% Win Rate', sparkData:[5,7,4,9,6,11,8,13,10,15,12,17,13,18,14,20,16,21,18,22] },
-  { id:'w4',  handle:'The Tactician of Oregon',      avatar:`${_CDN}/whale_avatar_4.png`,  winRate:0.68, roi30d:0.19, totalVolume:870000,  totalTrades:203, badge:'68% Win Rate', sparkData:[3,5,4,8,7,10,9,12,11,14,13,16,15,18,17,20,19,22,21,24] },
-  { id:'w5',  handle:'The Visionary of Denver',      avatar:`${_CDN}/whale_avatar_5.png`,  winRate:0.74, roi30d:0.27, totalVolume:1100000, totalTrades:178, badge:'74% Win Rate', sparkData:[2,3,5,4,7,6,9,8,11,10,13,12,15,14,17,16,19,18,21,20] },
-  { id:'w6',  handle:'The Architect of Seattle',     avatar:`${_CDN}/whale_avatar_6.png`,  winRate:0.65, roi30d:0.12, totalVolume:740000,  totalTrades:131, badge:'65% Win Rate', sparkData:[1,2,3,5,4,6,5,7,6,8,7,9,8,10,9,11,10,12,11,13] },
-  { id:'w7',  handle:'The Navigator of Boston',      avatar:`${_CDN}/whale_avatar_7.png`,  winRate:0.82, roi30d:0.33, totalVolume:1950000, totalTrades:244, badge:'82% Win Rate', sparkData:[5,8,6,11,9,14,12,17,15,20,18,23,21,26,24,29,27,32,30,35] },
-  { id:'w8',  handle:'The Analyst of New York',      avatar:`${_CDN}/whale_avatar_8.png`,  winRate:0.61, roi30d:0.08, totalVolume:610000,  totalTrades:98,  badge:'61% Win Rate', sparkData:[4,3,5,4,6,5,7,6,8,7,9,8,10,9,11,10,12,11,13,12] },
-  { id:'w9',  handle:'The Sentinel of Austin',       avatar:`${_CDN}/whale_avatar_9.png`,  winRate:0.77, roi30d:0.24, totalVolume:1340000, totalTrades:189, badge:'77% Win Rate', sparkData:[6,8,7,10,9,12,11,14,13,16,15,18,17,20,19,22,21,24,23,26] },
-  { id:'w10', handle:'The Scholar of San Francisco', avatar:`${_CDN}/whale_avatar_10.png`, winRate:0.70, roi30d:0.17, totalVolume:920000,  totalTrades:162, badge:'70% Win Rate', sparkData:[3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22] },
-  { id:'w11', handle:'The Commander of Miami',       avatar:`${_CDN}/whale_avatar_11.png`, winRate:0.85, roi30d:0.41, totalVolume:2100000, totalTrades:221, badge:'85% Win Rate', sparkData:[8,11,9,14,12,17,15,20,18,23,21,26,24,29,27,32,30,35,33,38] },
-  { id:'w12', handle:'The Virtuoso of Seattle',      avatar:`${_CDN}/whale_avatar_12.png`, winRate:0.63, roi30d:0.10, totalVolume:680000,  totalTrades:119, badge:'63% Win Rate', sparkData:[2,3,4,3,5,4,6,5,7,6,8,7,9,8,10,9,11,10,12,11] },
-  { id:'w13', handle:'The Pathfinder of Las Vegas',  avatar:`${_CDN}/whale_avatar_13.png`, winRate:0.73, roi30d:0.22, totalVolume:1060000, totalTrades:175, badge:'73% Win Rate', sparkData:[4,6,5,8,7,10,9,12,11,14,13,16,15,18,17,20,19,22,21,24] },
-  { id:'w14', handle:'The Maverick of Dallas',       avatar:`${_CDN}/whale_avatar_14.png`, winRate:0.69, roi30d:0.16, totalVolume:830000,  totalTrades:143, badge:'69% Win Rate', sparkData:[3,5,4,7,6,9,8,11,10,13,12,15,14,17,16,19,18,21,20,23] },
-  { id:'w15', handle:'The Operative of Phoenix',     avatar:`${_CDN}/whale_avatar_15.png`, winRate:0.76, roi30d:0.25, totalVolume:1230000, totalTrades:196, badge:'76% Win Rate', sparkData:[5,7,6,9,8,11,10,13,12,15,14,17,16,19,18,21,20,23,22,25] },
-  { id:'w16', handle:'The Engineer of Houston',      avatar:`${_CDN}/whale_avatar_16.png`, winRate:0.66, roi30d:0.13, totalVolume:770000,  totalTrades:127, badge:'66% Win Rate', sparkData:[2,4,3,6,5,8,7,10,9,12,11,14,13,16,15,18,17,20,19,22] },
-  { id:'w17', handle:'The Forecaster of Atlanta',    avatar:`${_CDN}/whale_avatar_17.png`, winRate:0.80, roi30d:0.30, totalVolume:1760000, totalTrades:237, badge:'80% Win Rate', sparkData:[7,9,8,12,11,15,14,18,17,21,20,24,23,27,26,30,29,33,32,36] },
-  { id:'w18', handle:'The Operator of Chicago',      avatar:`${_CDN}/whale_avatar_18.png`, winRate:0.62, roi30d:0.09, totalVolume:640000,  totalTrades:108, badge:'62% Win Rate', sparkData:[2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12] },
-  { id:'w19', handle:'The Watcher of Portland',      avatar:`${_CDN}/whale_avatar_19.png`, winRate:0.75, roi30d:0.23, totalVolume:1150000, totalTrades:182, badge:'75% Win Rate', sparkData:[4,6,5,8,7,10,9,12,11,14,13,16,15,18,17,20,19,22,21,24] },
-  { id:'w20', handle:'The Phantom of New Orleans',   avatar:`${_CDN}/whale_avatar_20.png`, winRate:0.88, roi30d:0.44, totalVolume:2380000, totalTrades:258, badge:'88% Win Rate', sparkData:[9,12,10,15,13,18,16,21,19,24,22,27,25,30,28,33,31,36,34,39] },
+  {
+    id: 'oracle',
+    handle: 'The Oracle of Oregon',
+    avatar: 'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/avatar_oracle.png',
+    wallet: '0xDeAd...f1234',
+    winRate: 0.92,
+    roi30d: 0.38,
+    roiAllTime: 1.22,
+    totalVolume: 2_840_000,
+    dominantCategory: 'US Politics',
+    totalTrades: 187,
+    badge: '92% Election Accuracy',
+    sparkData: [0, 4, 2, 8, 6, 12, 9, 15, 11, 18, 14, 22, 19, 28, 24, 31, 27, 35, 30, 38],
+    recentTrades: [
+      { market: 'Will Fed cut rates in March 2026?', outcome: 'YES', size: 50000 },
+      { market: 'Trump approval above 45% in April?', outcome: 'YES', size: 28000 },
+      { market: 'Hamas ceasefire held through Feb?', outcome: 'NO', size: 17000 },
+    ],
+  },
+  {
+    id: 'strategist',
+    handle: 'The Strategist of Chicago',
+    avatar: 'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/avatar_strategist.png',
+    wallet: '0xC4f3...a901',
+    winRate: 0.78,
+    roi30d: 0.21,
+    roiAllTime: 0.82,
+    totalVolume: 1_520_000,
+    dominantCategory: 'Crypto Markets',
+    totalTrades: 214,
+    badge: '78% ROI on Crypto Calls',
+    sparkData: [10, 8, 12, 6, 15, 10, 18, 14, 20, 16, 22, 17, 25, 20, 28, 22, 26, 23, 29, 25],
+    recentTrades: [
+      { market: 'BTC above $100k by end of March?', outcome: 'YES', size: 75000 },
+      { market: 'ETH ETF net inflow positive in Feb?', outcome: 'YES', size: 31000 },
+      { market: 'Coinbase stock above $300?', outcome: 'NO', size: 22000 },
+    ],
+  },
+  {
+    id: 'pioneer',
+    handle: 'The Pioneer of the Pacific Northwest',
+    avatar: 'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/avatar_pioneer.png',
+    wallet: '0x9b2E...de45',
+    winRate: 0.71,
+    roi30d: 0.15,
+    roiAllTime: 0.61,
+    totalVolume: 980_000,
+    dominantCategory: 'Global Events',
+    totalTrades: 156,
+    badge: '71% Cross-Market Win Rate',
+    sparkData: [5, 7, 4, 9, 6, 11, 8, 13, 10, 15, 12, 17, 13, 18, 14, 20, 16, 21, 18, 22],
+    recentTrades: [
+      { market: 'NATO expansion before June 2026?', outcome: 'NO', size: 12000 },
+      { market: 'UK inflation below 2% in Q1?', outcome: 'YES', size: 18500 },
+      { market: 'Elon Musk DOGE role until July?', outcome: 'YES', size: 42000 },
+    ],
+  },
 ];
 
-// ── Data: Market Templates ────────────────────────────────────────────────────
+// ── Avatar: wallet-hash gradient (crypto-native identicon fallback) ──────────────
+// Used when no archetype portrait matches the handle (Kalshi trades, unknown wallets).
+// Derives a unique, consistent gradient + initial from the wallet address/handle string.
+function generateGradientAvatar(seed, handle) {
+  let hash = 0;
+  const s = seed || handle || '?';
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) >>> 0;
+  const hue1 = hash % 360;
+  const hue2 = (hue1 + 55 + ((hash >> 4) % 60)) % 360;
 
+  // First meaningful word initial (skip "The", "of", articles)
+  const words = (handle || seed || '').split(/\s+/)
+    .filter(w => !['the','of','a','an','unknown'].includes(w.toLowerCase()));
+  let initial = (words[0] || '?')[0].toUpperCase();
+  if (!initial || initial === '0' || initial === 'K') initial = initial || '⬡'; // hex/kalshi fallback
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80">
+    <defs><radialGradient id="bg" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="hsl(${hue1},65%,42%)"/>
+      <stop offset="100%" stop-color="hsl(${hue2},80%,16%)"/>
+    </radialGradient></defs>
+    <circle cx="40" cy="40" r="40" fill="url(#bg)"/>
+    <text x="40" y="40" dominant-baseline="central" text-anchor="middle"
+          font-size="30" fill="rgba(255,255,255,0.92)" font-weight="700"
+          font-family="Inter,system-ui,sans-serif">${initial}</text>
+  </svg>`;
+  try { return 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svg))); }
+  catch { return 'data:image/svg+xml;base64,' + btoa(svg); }
+}
+
+// ── Avatar: 20 bespoke editorial-illustration portraits, assigned by wallet hash ──
+// Each whale deterministically maps to one of 20 premium illustrated portraits.
+// Same wallet address always resolves to the same avatar.
+const WHALE_AVATARS = [
+  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_1.png',  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_2.png',
+  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_3.png',  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_4.png',
+  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_5.png',  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_6.png',
+  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_7.png',  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_8.png',
+  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_9.png',  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_10.png',
+  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_11.png', 'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_12.png',
+  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_13.png', 'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_14.png',
+  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_15.png', 'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_16.png',
+  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_17.png', 'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_18.png',
+  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_19.png', 'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_20.png',
+];
+
+// Deterministic wallet hash — shared by avatar picker and accent color
+function _walletHash(seed) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+function getAvatarForHandle(handle, walletAddress) {
+  const seed = walletAddress || handle || 'whale';
+  return WHALE_AVATARS[_walletHash(seed) % WHALE_AVATARS.length];
+}
+
+// Unique HSL accent color per trader — used as identity ring on avatar.
+// 20 portraits × 360 hues = effectively unique per trader in any real feed.
+function traderAccentColor(walletAddress, handle) {
+  const seed = walletAddress || handle || 'whale';
+  const hue = _walletHash(seed) % 360;
+  return `hsl(${hue}, 70%, 58%)`;
+}
+
+// ── Data: Market Templates ────────────────────────────────────────────────────
 const MARKETS = [
   'Will the Fed cut rates in March 2026?',
   'BTC above $100k by end of April 2026?',
@@ -59,6 +163,7 @@ const state = {
   },
   filters: { minSize: 500, side: 'all' },
   sortBy: 'newest',  // 'newest' | 'largest'
+  sourceFilter: 'all',  // 'all' | 'POLYMARKET' | 'KALSHI'
   todayCount: 0,
   todayVolume: 0,
 };
@@ -108,19 +213,16 @@ async function loadProStatus() {
         if (state.isProUser) {
           // Already recognized — clean URL and celebrate
           history.replaceState({}, '', location.pathname);
-          showToast({ tier: 'WHALE', whale: { handle: '🎉 Welcome to PolyVision PRO!' },
-            market: 'All PRO features are now unlocked. Your feed just expanded to 50 events.',
-            outcome: 'YES', usdValue: 0, timestamp: Date.now() });
-          if (!state.discordLinked) {
-            setTimeout(() => {
-              showToast({ tier: 'STANDARD', whale: { handle: '💙 Link Your Discord' },
-                market: 'Connect Discord to get exclusive PRO channel access with your subscription.',
-                outcome: 'YES', usdValue: 0, timestamp: Date.now() });
-            }, 4000);
-          }
+          showUpgradeWelcome();
         } else {
-          // Webhook hasn't fired yet — poll until the Brain confirms PRO status
-          pollForProStatus();
+          const sessionId = params.get('session_id');
+          if (sessionId) {
+            // Verify payment directly via Stripe API — no webhook required
+            activateProDirectly(sessionId);
+          } else {
+            // No session_id in URL — fall back to polling
+            pollForProStatus();
+          }
         }
       }
     }
@@ -129,6 +231,70 @@ async function loadProStatus() {
     state.isProUser = !!(window.Clerk?.user?.publicMetadata?.tier === 'PRO');
   }
 }
+
+// ── Direct PRO Activation (webhook-free) ─────────────────────────────────────
+// Called when the user returns from Stripe and ?session_id=xxx is in the URL.
+// Calls /stripe/confirm-checkout on The Brain, which retrieves the session from
+// Stripe API directly and grants PRO immediately — no webhook delivery required.
+async function activateProDirectly(sessionId) {
+  const user = window.Clerk?.user;
+  if (!user) return;
+  // Show activation banner immediately
+  if (!document.getElementById('proActivatingBanner')) {
+    const banner = document.createElement('div');
+    banner.id = 'proActivatingBanner';
+    banner.style.cssText = [
+      'position:fixed;bottom:24px;left:50%;transform:translateX(-50%)',
+      'background:#161b22;border:1px solid rgba(0,255,163,0.4);border-radius:12px',
+      'padding:12px 24px;color:#e6edf3;font-size:14px;font-weight:600;z-index:9999',
+      'box-shadow:0 4px 24px rgba(0,0,0,0.5);display:flex;align-items:center;gap:10px',
+      'animation:fadeUp 0.4s ease',
+    ].join(';');
+    banner.innerHTML = '<span style="color:#00ffa3">⏳</span> Payment confirmed — activating your PRO account…';
+    document.body.appendChild(banner);
+  }
+  try {
+    const resp = await fetch(`${BRAIN_URL}/stripe/confirm-checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, clerk_user_id: user.id }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.is_pro) {
+        state.isProUser = true;
+        history.replaceState({}, '', location.pathname);
+        document.getElementById('proActivatingBanner')?.remove();
+        const upgradeBtn = $('btnHudUpgrade');
+        if (upgradeBtn) upgradeBtn.style.display = 'none';
+        renderDiscordLinkButton();
+        showUpgradeWelcome();
+        return;
+      }
+    }
+  } catch (err) {
+    console.error('[PolyVision] Direct PRO activation failed:', err);
+  }
+  // Direct verification failed — fall back to polling
+  document.getElementById('proActivatingBanner')?.remove();
+  pollForProStatus();
+}
+
+// ── Shared upgrade welcome toast ──────────────────────────────────────────────
+function showUpgradeWelcome() {
+  showToast({ tier: 'WHALE', whale: { handle: '🎉 Welcome to PolyVision PRO!' },
+    market: 'All PRO features are now unlocked. Your feed just expanded to 50 events.',
+    outcome: 'YES', usdValue: 0, timestamp: Date.now() });
+  if (!state.discordLinked) {
+    setTimeout(() => {
+      showToast({ tier: 'STANDARD', whale: { handle: '💙 Link Your Discord' },
+        market: 'Connect Discord to get exclusive PRO channel access with your subscription.',
+        outcome: 'YES', usdValue: 0, timestamp: Date.now() });
+    }, 4000);
+  }
+}
+
 
 // ── PRO Activation Poller ─────────────────────────────────────────────────────
 // Called when the user returns from Stripe with ?upgrade=success but the Brain
@@ -200,7 +366,8 @@ function renderDiscordLinkButton() {
   if (!state.isProUser) { container.style.display = 'none'; return; }
   container.style.display = '';
   container.innerHTML = state.discordLinked
-    ? `<a class="discord-linked" href="https://discord.gg/XQWgDqdVmK" target="_blank" rel="noopener" title="Open the PolyVision Discord server">💙 Discord Linked ✅ — Join Server</a>`
+    ? `<a class="discord-linked" href="https://discord.com/channels/1485011217381589022" target="_blank" rel="noopener" title="Open the PolyVision Discord server">💙 Discord Linked ✅ — Open Server</a>`
+
     : `<button class="btn-discord-link" onclick="openDiscordOAuth()">💙 Link Discord — Get PRO Channel Access</button>`;
 
   // Always show Manage Subscription for PRO users below the Discord button
@@ -214,6 +381,21 @@ window.openDiscordOAuth = function () {
   const popup = window.open(url, 'discord_oauth', 'width=500,height=700,scrollbars=yes');
   if (!popup) alert('Please allow popups to link your Discord account.');
 };
+
+window.openDiscordServer = async function () {
+  const user = window.Clerk?.user;
+  const discordUrl = 'https://discord.com/channels/1485011217381589022';
+  if (!user) { window.open(discordUrl, '_blank'); return; }
+  try {
+    // Verify + grant PRO role before opening Discord, in case it was missed at link time
+    const res = await fetch(`${BRAIN_URL}/discord/verify-access?clerk_user_id=${encodeURIComponent(user.id)}`);
+    const data = await res.json();
+    window.open(data.discord_url || discordUrl, '_blank');
+  } catch (e) {
+    window.open(discordUrl, '_blank');
+  }
+};
+
 
 // Listen for the callback popup to confirm Discord was linked
 window.addEventListener('message', (event) => {
@@ -238,6 +420,9 @@ window.openBillingPortal = async function () {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         clerk_user_id: user.id,
+        email: user.primaryEmailAddress?.emailAddress
+              || user.emailAddresses?.[0]?.emailAddress
+              || '',
         return_url: window.location.href,
       }),
     });
@@ -268,7 +453,12 @@ window.startStripeCheckout = async function () {
   const btn = $('btnGoStripe');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Redirecting to Stripe…'; }
   try {
-    const email = user.primaryEmailAddress?.emailAddress || '';
+    // Pull primary email first; fall back to any verified email (covers social-login
+    // accounts where primaryEmailAddress may be null even if emailAddresses is populated).
+    const email = user.primaryEmailAddress?.emailAddress
+                || user.emailAddresses?.[0]?.emailAddress
+                || '';
+
     const origin = window.location.origin;
     const resp = await fetch(`${BRAIN_URL}/checkout/create-session`, {
       method: 'POST',
@@ -343,14 +533,6 @@ function timeAgo(ms) {
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
   return `${Math.floor(s / 3600)}h ago`;
 }
-
-// Refresh all visible timestamps every 60s without re-rendering the feed
-function refreshTimestamps() {
-  document.querySelectorAll('.card-time[data-timestamp]').forEach(el => {
-    el.textContent = timeAgo(parseInt(el.dataset.timestamp, 10));
-  });
-}
-setInterval(refreshTimestamps, 60_000);
 function randomBetween(a, b) { return a + Math.random() * (b - a); }
 function pickRandom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 function calcConviction(whale, usdValue, totalTrades, totalVolumeUsd) {
@@ -492,7 +674,7 @@ function buildEventCard(ev) {
         <span style="font-size:26px;flex-shrink:0">🚨</span>
         <div class="card-meta">
           <div class="card-handle" style="color:#FFB800">MEGA-CLUSTER ALERT</div>
-          <div class="card-time" data-timestamp="${ev.timestamp}">${timeAgo(ev.timestamp)}</div>
+          <div class="card-time">${timeAgo(ev.timestamp)}</div>
         </div>
         <div class="card-badges">
           <span class="tier-badge CLUSTER">🚨 CLUSTER ×${ev.clusterCount || participants.length}</span>
@@ -541,13 +723,15 @@ function buildEventCard(ev) {
   <div class="event-card ${sideClass}-card tier-${tierClass}" id="card-${ev.id}" data-id="${ev.id}" onclick="openTradeModal('${ev.id}')">
     <span class="expand-hint">Click for details</span>
     <div class="card-top">
-      <img class="card-avatar ${sideClass}" src="${ev.whale.avatar}" alt="${ev.whale.handle}" />
+      <img class="card-avatar ${sideClass}" src="${ev.whale.avatar}" alt="${ev.whale.handle}"
+           style="outline: 2.5px solid ${traderAccentColor(ev.whale.wallet, ev.whale.handle)}; outline-offset: 1px;" />
       <div class="card-meta">
         <div class="card-handle">${ev.whale.handle}</div>
-        <div class="card-time" data-timestamp="${ev.timestamp}">${timeAgo(ev.timestamp)}</div>
+        <div class="card-time">${timeAgo(ev.timestamp)}</div>
       </div>
       <div class="card-badges">
         <span class="tier-badge ${ev.tier}">${ev.tier === 'WHALE' ? '🐋' : '🔵'} ${ev.tier}</span>
+        <span class="source-badge ${(ev.source||'POLYMARKET').toLowerCase()}">${ev.source === 'KALSHI' ? 'KALSHI' : 'POLY'}</span>
       </div>
     </div>
     <div class="card-market">
@@ -774,12 +958,13 @@ function connectLiveFeed() {
             wallet_total_trades: parseInt(p.wallet_total_trades || 1),
             wallet_total_volume: parseFloat(p.wallet_total_volume || p.usd_value || 10000),
             timestamp:           p.timestamp ? new Date(p.timestamp).getTime() : Date.now(),
+            source:              p.source || 'POLYMARKET',
             historical:          true,   // flag: don't animate or alert
             whale: {
               id: p.wallet_address || `whale-${i}`,
               handle:    p.trader_handle || 'Unknown Whale',
               wallet:    p.wallet_address || '',
-              avatar:    pickRandom(WHALES).avatar,
+              avatar:    getAvatarForHandle(p.trader_handle || p.trader_pseudonym || '', p.wallet_address || ''),
               badge:     p.wallet_win_rate >= 0.6 ? 'Shark' : (p.wallet_win_rate !== undefined ? 'Pro' : 'Newcomer'),
               winRate:   p.wallet_win_rate !== undefined ? parseFloat(p.wallet_win_rate) : 0,
               roi30d:    parseFloat(p.wallet_roi_30d || 0),
@@ -793,9 +978,14 @@ function connectLiveFeed() {
         if (loaded > 0) {
           // Generate chips for historical events (no frequency context yet, that's fine)
           state.events.forEach(ev => { if (!ev.reasoningChips?.length) ev.reasoningChips = generateChips(ev); });
+          // Initialize today's count and volume from historical events that are from today
+          const todayStr = new Date().toDateString();
+          const todayEvs = state.events.filter(ev => new Date(ev.timestamp).toDateString() === todayStr);
+          state.todayCount = todayEvs.length;
+          state.todayVolume = todayEvs.reduce((s, ev) => s + (ev.usdValue || 0), 0);
           renderFeed();
           updateStats();
-          console.log(`[PolyVision] Seeded feed with ${loaded} historical events.`);
+          console.log(`[PolyVision] Seeded feed with ${loaded} historical events (${state.todayCount} from today).`);
         }
         return;  // don't fall through to live-event handling
       }
@@ -815,12 +1005,13 @@ function connectLiveFeed() {
           wallet_total_trades: parseInt(payload.wallet_total_trades || 1),
           wallet_total_volume: parseFloat(payload.wallet_total_volume || payload.usd_value || 10000),
           timestamp: payload.timestamp ? new Date(payload.timestamp).getTime() : Date.now(),
+          source: payload.source || 'POLYMARKET',
           // Assign random aesthetic elements to real wallets
           whale: {
             id: payload.wallet_address || `whale-${Date.now()}`,
             handle: payload.trader_handle || 'Unknown Whale',
             wallet: payload.wallet_address || '',
-            avatar: pickRandom(WHALES).avatar,
+            avatar: getAvatarForHandle(payload.trader_handle || payload.trader_pseudonym || '', payload.wallet_address || ''),
             badge: payload.wallet_win_rate >= 0.6 ? 'Shark' : (payload.wallet_win_rate !== undefined ? 'Pro' : 'Newcomer'),
             winRate: payload.wallet_win_rate !== undefined ? parseFloat(payload.wallet_win_rate) : 0,
             roi30d: parseFloat(payload.wallet_roi_30d || 0),
@@ -914,6 +1105,8 @@ function renderFeed() {
   events = events.filter(ev => {
     if (ev.usdValue < state.filters.minSize) return false;
     if (state.filters.side !== 'all' && ev.outcome !== state.filters.side) return false;
+    // Platform filter (All | Polymarket | Kalshi)
+    if (state.sourceFilter !== 'all' && (ev.source || 'POLYMARKET') !== state.sourceFilter) return false;
     return true;
   });
 
@@ -1309,9 +1502,9 @@ window.openTradeModal = function (eventId) {
     `<span class="dot ${i < conviction ? 'filled' + (conviction <= 5 ? ' risk' : '') : ''}"></span>`
   ).join('');
 
-  const chipsHtml = ev.reasoningChips.map(c => `<span class="chip">${c}</span>`).join('');
+  const chipsHtml = (ev.reasoningChips || []).map(c => `<span class="chip">${c}</span>`).join('');
 
-  const recentHtml = whale.recentTrades.map(t => `
+  const recentHtml = (whale.recentTrades || []).map(t => `
         <div class="recent-trade-row">
           <span class="trade-outcome ${t.outcome.toLowerCase()}">${t.outcome}</span>
           <span class="trade-market">${t.market.slice(0, 38)}${t.market.length > 38 ? '…' : ''}</span>
@@ -1321,7 +1514,8 @@ window.openTradeModal = function (eventId) {
   modalContent.innerHTML = `
       <!-- ── Trade Header ── -->
       <div class="modal-trade-header">
-        <img class="modal-avatar" src="${whale.avatar}" alt="${whale.handle}" />
+        <img class="modal-avatar" src="${whale.avatar}" alt="${whale.handle}"
+             style="outline: 3px solid ${traderAccentColor(whale.wallet, whale.handle)}; outline-offset: 2px;" />
         <div>
           <div class="modal-handle">${whale.handle}</div>
           <div class="modal-wallet">${whale.wallet} · ${whale.dominantCategory}</div>
@@ -1512,6 +1706,32 @@ $('sortSize').onclick = () => {
   $('sortNew').classList.remove('active');
   renderFeed();
 };
+
+// ── Platform Source Filter ─────────────────────────────────────────────────────
+// Sets platform filter (all | POLYMARKET | KALSHI), persists choice to localStorage.
+window.setSourceFilter = function(platform) {
+  state.sourceFilter = platform;
+  localStorage.setItem('pv_source_filter', platform);
+
+  const btnMap = { all: 'pfBtnAll', POLYMARKET: 'pfBtnPoly', KALSHI: 'pfBtnKalshi' };
+  document.querySelectorAll('.platform-btn').forEach(b => b.classList.remove('active'));
+  const btn = $( btnMap[platform] );
+  if (btn) btn.classList.add('active');
+
+  renderFeed();
+};
+
+// Restore saved platform preference on load
+(function() {
+  const saved = localStorage.getItem('pv_source_filter') || 'all';
+  if (saved !== 'all') {
+    state.sourceFilter = saved;
+    const btnMap = { all: 'pfBtnAll', POLYMARKET: 'pfBtnPoly', KALSHI: 'pfBtnKalshi' };
+    document.querySelectorAll('.platform-btn').forEach(b => b.classList.remove('active'));
+    const btn = $(btnMap[saved]);
+    if (btn) btn.classList.add('active');
+  }
+})();
 
 // ── View Router ─────────────────────────────────────────────────────────────
 const VIEWS = {
@@ -1853,7 +2073,7 @@ window.exportPortfolioCSV = async function() {
 // FINAL APPROACH (2026-03-19):
 //
 // The Sign In button on index.html (the landing page) now links DIRECTLY to
-// Clerk's hosted sign-in URL (calm-skink-66.clerk.accounts.dev/sign-in).
+// Clerk's hosted sign-in URL (accounts.polyvision.app/sign-in).
 // That means this function only runs for users who navigate directly to /app.
 //
 // We use mountSignIn() with NO routing params:
@@ -1911,7 +2131,7 @@ async function initAuth() {
           <div style="font-size:3rem;margin-bottom:1rem">🐋</div>
           <h2 style="margin:0 0 8px">PolyVision</h2>
           <p style="color:#8b949e;font-size:14px;margin-bottom:24px">Authentication unavailable. Please sign in to continue.</p>
-          <a href="https://calm-skink-66.clerk.accounts.dev/sign-in?redirect_url=https%3A%2F%2Fpolyvision.app%2Fdashboard"
+          <a href="https://accounts.polyvision.app/sign-in?redirect_url=https%3A%2F%2Fpolyvision.app%2Fdashboard"
              style="display:inline-block;padding:12px 28px;background:#00ffa3;color:#000;border-radius:8px;font-weight:700;text-decoration:none;font-size:15px">
             Sign In
           </a>
@@ -2112,13 +2332,59 @@ function renderGlobalLeaderboard(traders) {
   }).join('');
 }
 
-// openLbTraderModal is defined below (after openXrayModal) — see line ~2416
+window.openLbTraderModal = function (wallet, handle, traderData) {
+  const trader = typeof traderData === 'string' ? JSON.parse(traderData) : traderData;
+  const pnlPos = trader.pnl >= 0;
+  const pnlStr = (pnlPos ? '+$' : '-$') + Math.abs(trader.pnl).toLocaleString('en-US', { maximumFractionDigits: 0 });
+
+  $('modalContent').innerHTML = `
+        <div class="modal-header">
+            <div class="modal-avatar">👑</div>
+            <div class="modal-title-block">
+                <h2 class="modal-trader-name">${handle}</h2>
+                <p class="modal-wallet">${wallet ? wallet.slice(0, 10) + '…' + wallet.slice(-6) : 'Unknown Wallet'}</p>
+            </div>
+        </div>
+        <div class="modal-section-label">ALL-TIME PERFORMANCE</div>
+        <div class="modal-stats-grid">
+            <div class="stat-block">
+                <span class="stat-label">All-Time P&L</span>
+                <span class="stat-value ${pnlPos ? 'positive' : 'negative'}">${pnlStr}</span>
+            </div>
+            <div class="stat-block">
+                <span class="stat-label">Win Rate</span>
+                <span class="stat-value">${t.win_rate ? (t.win_rate * 100).toFixed(1) + '%' : 'New'}</span>
+            </div>
+            <div class="stat-block">
+                <span class="stat-label">Total Trades</span>
+                <span class="stat-value">${trader.trades ? trader.trades.toLocaleString() : 'N/A'}</span>
+            </div>
+            <div class="stat-block">
+                <span class="stat-label">Volume</span>
+                <span class="stat-value">$${trader.volume ? trader.volume.toLocaleString('en-US', { maximumFractionDigits: 0 }) : 'N/A'}</span>
+            </div>
+            <div class="stat-block">
+                <span class="stat-label">Global Rank</span>
+                <span class="stat-value">#${trader.rank}</span>
+            </div>
+        </div>
+        <div class="modal-section-label">WALLET</div>
+        <div class="modal-trade-box">
+            <code style="font-size:11px;color:var(--text-muted);word-break:break-all">${wallet || 'N/A'}</code>
+        </div>
+        <div class="modal-actions">
+            <a class="btn-modal-primary" href="https://polymarket.com/profile/${wallet}" target="_blank" rel="noopener">
+                🔗 View on Polymarket
+            </a>
+        </div>`;
+  $('modalOverlay').classList.add('active');
+};
 
 
 // ── Wallet X-Ray (3-tab deep profile) ─────────────────────────────────────────
 let xrayChartInstance = null;
 
-window.openXrayModal = async function (wallet, handle, defaultTab = 'portfolio') {
+window.openXrayModal = async function (wallet, handle) {
   // Show modal immediately with loading spinner
   $('modalContent').innerHTML = `
         <div class="modal-header">
@@ -2178,30 +2444,15 @@ window.openXrayModal = async function (wallet, handle, defaultTab = 'portfolio')
   const historyHtml = history.length === 0
     ? '<p style="color:var(--text-muted);font-size:12px;padding:8px 0">No history found.</p>'
     : history.slice(0, 50).map(h => {
-      const date = h.timestamp
-        ? new Date(h.timestamp * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
-        : '—';
+      const date = h.timestamp ? new Date(h.timestamp * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
       const size = parseFloat(h.usdcSize || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
-      const title = (h.title || h.slug || h.conditionId || 'Unknown Market').slice(0, 48);
-      const outcome = h.outcome ? h.outcome.slice(0, 10) : '';
-      const price = h.price ? `${(parseFloat(h.price) * 100).toFixed(0)}¢` : '';
-      const isBuy = (h.type || '').toUpperCase() === 'BUY';
-      const typeBg = isBuy ? 'rgba(255,77,109,0.15)' : 'rgba(0,255,163,0.12)';
-      const typeColor = isBuy ? 'var(--rose)' : 'var(--mint)';
-      const outcomeBg = isBuy ? 'rgba(255,184,0,0.12)' : 'rgba(0,200,150,0.1)';
-      const outcomeColor = isBuy ? '#ffb800' : 'var(--mint)';
+      const title = (h.title || h.slug || h.conditionId || 'Unknown Market').slice(0, 42);
+      const typeColor = h.type === 'BUY' ? 'var(--rose)' : 'var(--mint)';
       return `
             <div class="xray-hist-row">
-                <span style="background:${typeBg};color:${typeColor};font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;min-width:34px;text-align:center;flex-shrink:0">${h.type || '?'}</span>
-                <div style="flex:1;min-width:0;overflow:hidden">
-                    <div class="xray-hist-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${title}</div>
-                    <div style="font-size:10px;color:var(--text-muted);margin-top:2px;display:flex;gap:6px;align-items:center">
-                        ${outcome ? `<span style="background:${outcomeBg};color:${outcomeColor};padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600">${outcome}</span>` : ''}
-                        ${price ? `<span>${price}</span>` : ''}
-                        <span>${date}</span>
-                    </div>
-                </div>
-                <span class="xray-hist-size" style="color:${isBuy ? 'var(--text-primary)' : 'var(--mint)'}">${isBuy ? '' : '+'}<span style="font-size:9px;color:var(--text-muted)">$</span>${size}</span>
+                <span class="xray-hist-type" style="color:${typeColor}">${h.type || '?'}</span>
+                <span class="xray-hist-title">${title}</span>
+                <span class="xray-hist-size">$${size}</span>
             </div>`;
     }).join('');
 
@@ -2234,12 +2485,12 @@ window.openXrayModal = async function (wallet, handle, defaultTab = 'portfolio')
         </div>
 
         <div class="xray-tabs" id="xrayTabs">
-            <button class="xray-tab${defaultTab === 'portfolio' ? ' active' : ''}" data-panel="portfolio">📊 Portfolio</button>
-            <button class="xray-tab${defaultTab === 'curve' ? ' active' : ''}" data-panel="curve">📈 Equity Curve</button>
-            <button class="xray-tab${defaultTab === 'history' ? ' active' : ''}" data-panel="history">📋 Trade History</button>
+            <button class="xray-tab active" data-panel="portfolio">📊 Portfolio</button>
+            <button class="xray-tab" data-panel="curve">📈 Equity Curve</button>
+            <button class="xray-tab" data-panel="history">📋 History</button>
         </div>
 
-        <div class="xray-panel${defaultTab === 'portfolio' ? ' active' : ''}" id="xray-portfolio" style="max-height:360px;overflow-y:auto">
+        <div class="xray-panel active" id="xray-portfolio" style="max-height:360px;overflow-y:auto">
             ${openPositions.length > 0 ? `<div class="modal-section-label">OPEN POSITIONS (${openPositions.length})</div>${renderPositions(openPositions)}` : ''}
             ${closedPositions.length > 0 ? `<div class="modal-section-label" style="margin-top:8px">CLOSED / SETTLED</div>${renderPositions(closedPositions)}` : ''}
         </div>
@@ -2253,7 +2504,7 @@ window.openXrayModal = async function (wallet, handle, defaultTab = 'portfolio')
             </p>
         </div>
 
-        <div class="xray-panel${defaultTab === 'history' ? ' active' : ''}" id="xray-history" style="max-height:360px;overflow-y:auto">
+        <div class="xray-panel" id="xray-history" style="max-height:360px;overflow-y:auto">
             ${historyHtml}
         </div>
 
@@ -2328,9 +2579,9 @@ function renderEquityCurve(curveData) {
   });
 }
 
-// Leaderboard row click → open X-Ray defaulting to Trade History tab
+// Override the leaderboard trader modal to use X-Ray
 window.openLbTraderModal = function (wallet, handle, traderData) {
-  openXrayModal(wallet, handle, 'history');
+  openXrayModal(wallet, handle);
 };
 
 // ── Portfolio Slide-Over Page ─────────────────────────────────────────────────
