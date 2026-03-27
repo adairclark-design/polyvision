@@ -6,7 +6,7 @@ const WHALES = [
   {
     id: 'oracle',
     handle: 'The Oracle of Oregon',
-    avatar: 'assets/avatar_oracle.png',
+    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=oracle&backgroundColor=0f172a',
     wallet: '0xDeAd...f1234',
     winRate: 0.92,
     roi30d: 0.38,
@@ -25,7 +25,7 @@ const WHALES = [
   {
     id: 'strategist',
     handle: 'The Strategist of Chicago',
-    avatar: 'assets/avatar_strategist.png',
+    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=strategist&backgroundColor=0f172a',
     wallet: '0xC4f3...a901',
     winRate: 0.78,
     roi30d: 0.21,
@@ -44,7 +44,7 @@ const WHALES = [
   {
     id: 'pioneer',
     handle: 'The Pioneer of the Pacific Northwest',
-    avatar: 'assets/avatar_pioneer.png',
+    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=pioneer&backgroundColor=0f172a',
     wallet: '0x9b2E...de45',
     winRate: 0.71,
     roi30d: 0.15,
