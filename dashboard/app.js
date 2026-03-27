@@ -2346,7 +2346,9 @@ window.openXrayModal = async function (wallet, handle, defaultTab) {
   // Show modal immediately with loading spinner
   $('modalContent').innerHTML = `
         <div class="modal-header">
-            <div class="modal-avatar">🔬</div>
+            <img class="modal-avatar" src="${getAvatarForHandle(handle, wallet)}" alt="${handle}"
+                 style="border-color: ${traderAccentColor(wallet, handle)}; box-shadow: 0 0 12px ${traderAccentColor(wallet, handle)}55;"
+                 onerror="this.src='${generateGradientAvatar(wallet, handle)}'" />
             <div class="modal-title-block">
                 <h2 class="modal-trader-name">${handle}</h2>
                 <p class="modal-wallet">${wallet.slice(0, 10)}…${wallet.slice(-6)}</p>
@@ -2417,7 +2419,9 @@ window.openXrayModal = async function (wallet, handle, defaultTab) {
   // ── Build full modal HTML ──
   $('modalContent').innerHTML = `
         <div class="modal-header">
-            <div class="modal-avatar">🔬</div>
+            <img class="modal-avatar" src="${getAvatarForHandle(profile.handle || handle, wallet)}" alt="${profile.handle || handle}"
+                 style="border-color: ${traderAccentColor(wallet, handle)}; box-shadow: 0 0 12px ${traderAccentColor(wallet, handle)}55;"
+                 onerror="this.src='${generateGradientAvatar(wallet, handle)}'" />
             <div class="modal-title-block">
                 <h2 class="modal-trader-name">${profile.handle || handle}</h2>
                 <p class="modal-wallet">${wallet.slice(0, 10)}…${wallet.slice(-6)}</p>
