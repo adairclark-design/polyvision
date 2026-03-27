@@ -2272,9 +2272,9 @@ async function fetchLeaderboard(forceRefresh = false) {
       rank:        i + 1,
       wallet:      t.proxyWallet || '',
       handle:      t.userName || t.name || `Trader 0x…${(t.proxyWallet || '').slice(-6).toUpperCase()}`,
-      win_rate:    null,  // not in public API
+      win_rate:    t.winRate != null ? parseFloat(t.winRate) : null,
       pnl:         parseFloat(t.pnl || 0),
-      trades:      null,
+      trades:      t.tradeCount ? parseInt(t.tradeCount) : null,
     }));
 
     renderGlobalLeaderboard(traders);
