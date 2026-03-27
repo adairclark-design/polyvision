@@ -2321,7 +2321,7 @@ function renderGlobalLeaderboard(traders) {
     const shortWallet = t.wallet ? `${t.wallet.slice(0, 6)}…${t.wallet.slice(-4)}` : '';
 
     return `
-        <div class="lb-row" onclick="openLbTraderModal('${t.wallet}', '${t.handle.replace(/'/g, "\\'")}', ${JSON.stringify(t).replace(/</g, '\\u003c')})">
+        <div class="lb-row" onclick="openLbTraderModal('${t.wallet}', '${t.handle.replace(/'/g, "\\'")}')">
             <span class="lb-rank ${isTop3 ? 'top3' : ''}">${rankLabel}</span>
             <div class="lb-info">
                 <span class="lb-handle">${t.handle}</span>
