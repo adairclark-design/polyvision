@@ -279,6 +279,25 @@ def _quick_handle(wallet: str) -> str:
     h = int(hashlib.sha256(wallet.encode()).hexdigest(), 16)
     return f"The {ADJECTIVES[h % len(ADJECTIVES)]} of {REGIONS[(h >> 8) % len(REGIONS)]}"
 
+
+def _compute_win_rate_from_xray(wallet: str) -> float | None:
+    """
+    Fetches the wallet X-Ray (Redis-cached, 60s TTL) and returns the
+    profitable-trade win rate: closed positions with net_pnl > 0 ÷ total closed.
+    Returns None silently on any error so the pipeline never stalls.
+    """
+    try:
+        profile = get_wallet_xray(wallet)
+        positions = profile.get('positions', [])
+        closed = [p for p in positions if not p.get('is_open', True)]
+        if not closed:
+            return None
+        wins = sum(1 for p in closed if (p.get('net_pnl') or 0) > 0)
+        return round(wins / len(closed), 4)
+    except Exception as e:
+        log.debug(f"Win rate fetch skipped for {wallet[:10]}…: {e}")
+        return None
+
 async def run_pipeline(event_dict: dict):
     """Full pipeline: Signal → Profile → AI → Notify → Cache → Stream to dashboard."""
     try:
@@ -299,6 +318,22 @@ async def run_pipeline(event_dict: dict):
         alert = build_alert(event_dict, whale_profile)
         if not alert:
             return   # filtered out by threshold
+
+        # 1a. Win Rate Pre-Fetch — use existing wallet X-Ray (Redis-cached) to
+        #     compute profitable-trade win rate and patch it into the alert before
+        #     it hits the dashboard. Falls back silently; never stalls the pipeline.
+        wallet = event_dict.get('maker_address', '')
+        if wallet and alert.get('wallet_win_rate') is None:
+            fetched_wr = await asyncio.get_event_loop().run_in_executor(
+                None, _compute_win_rate_from_xray, wallet
+            )
+            if fetched_wr is not None:
+                alert['wallet_win_rate'] = fetched_wr
+                # Also update copy-trade flag now that we have real data
+                alert['copy_trade_recommended'] = fetched_wr >= float(
+                    os.getenv('COPY_TRADE_MIN_WIN_RATE', '0.60')
+                )
+                log.info(f"🎯 Win rate for {wallet[:10]}…: {fetched_wr:.1%}")
 
         # 1b. Cluster Detection — check if 3+ whales on same side within 15 min
         #     If a cluster is found, promote the alert to CLUSTER tier
