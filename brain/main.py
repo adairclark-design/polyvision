@@ -65,19 +65,12 @@ from subscriptions import (
     link_discord, get_discord_user_id,
 )
 from discord_roles import (
-    grant_pro_role, revoke_pro_role, kick_from_server, add_to_guild,
-    exchange_code_for_user_id,
+    grant_pro_role, revoke_pro_role, exchange_code_for_user_id,
 )
 from price_tracker import (
     init_db        as init_price_tracker_db,
     run_price_tracker_pass,
 )
-try:
-    from kalshi_ear import poll_kalshi as _poll_kalshi
-    KALSHI_ENABLED = True
-except ImportError:
-    KALSHI_ENABLED = False
-    _poll_kalshi = None
 
 load_dotenv()
 
@@ -165,19 +158,6 @@ async def lifespan(app: FastAPI):
         name='Daily Price Impact Tracker (07:30 EST)',
         replace_existing=True,
     )
-    # ── Kalshi Trade Poller (every 60 seconds) ──────────────────────────────────────
-    if KALSHI_ENABLED:
-        scheduler.add_job(
-            _poll_kalshi,          # sync function — ASyncIOScheduler runs it in thread executor
-            trigger='interval',
-            seconds=60,
-            id='kalshi_poller',
-            name='Kalshi Trade Poller (60s interval)',
-            replace_existing=True,
-        )
-        log.info('Kalshi poller scheduled — polls every 60 seconds.')
-    else:
-        log.info('Kalshi ear not available (kalshi_ear.py not found) — Polymarket-only mode.')
     scheduler.start()
     log.info(f'Briefing scheduler started — fires daily at {BRIEFING_HOUR:02d}:00 EST.')
     log.info('Market resolution cron scheduled — fires daily at 06:00 EST.')
@@ -212,7 +192,6 @@ class TradeEvent(BaseModel):
     timestamp:     str = ''
     trader_pseudonym: str = ''
     trader_name:   str = ''
-    source:        str = 'POLYMARKET'   # 'POLYMARKET' | 'KALSHI'
 
 class WhaleFollowRequest(BaseModel):
     wallet_address:     str
@@ -320,9 +299,6 @@ async def run_pipeline(event_dict: dict):
         alert = build_alert(event_dict, whale_profile)
         if not alert:
             return   # filtered out by threshold
-
-        # Propagate the source platform so the dashboard can show POLYMARKET / KALSHI badge
-        alert['source'] = event_dict.get('source', 'POLYMARKET')
 
         # 1b. Cluster Detection — check if 3+ whales on same side within 15 min
         #     If a cluster is found, promote the alert to CLUSTER tier
@@ -625,6 +601,35 @@ async def health():
     }
 
 
+@app.get('/twitter/test')
+async def twitter_test(dry_run: bool = True):
+    """
+    Diagnostic endpoint — fires a test tweet (or dry-run) and returns credential + result info.
+    GET /twitter/test          → dry-run, no real tweet
+    GET /twitter/test?dry_run=false → fires a real tweet to @PolyVisionApp
+    """
+    try:
+        from twitter_poster import (
+            TWITTER_API_KEY, TWITTER_API_KEY_SECRET,
+            TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET,
+            TWITTER_MIN_SIZE, TWITTER_KALSHI_MIN_SIZE,
+            maybe_tweet, TEST_PAYLOAD_KALSHI,
+        )
+        creds = {
+            'TWITTER_API_KEY':             'SET' if TWITTER_API_KEY             else 'MISSING',
+            'TWITTER_API_KEY_SECRET':      'SET' if TWITTER_API_KEY_SECRET      else 'MISSING',
+            'TWITTER_ACCESS_TOKEN':        'SET' if TWITTER_ACCESS_TOKEN        else 'MISSING',
+            'TWITTER_ACCESS_TOKEN_SECRET': 'SET' if TWITTER_ACCESS_TOKEN_SECRET else 'MISSING',
+            'TWITTER_MIN_SIZE':            TWITTER_MIN_SIZE,
+            'TWITTER_KALSHI_MIN_SIZE':     TWITTER_KALSHI_MIN_SIZE,
+        }
+        result = maybe_tweet(TEST_PAYLOAD_KALSHI, dry_run=dry_run)
+        return {'credentials': creds, 'result': result}
+    except Exception as e:
+        log.error(f'[twitter/test] Error: {e}', exc_info=True)
+        return {'error': str(e)}
+
+
 @app.post('/webhooks/stripe')
 async def stripe_webhook_legacy(request: Request):
     """Legacy alias — forwards to the canonical /stripe/webhook handler."""
@@ -718,107 +723,23 @@ async def create_checkout_session(body: CheckoutRequest):
     if not STRIPE_API_KEY or not STRIPE_PRICE_ID:
         raise HTTPException(503, 'Stripe not configured — set STRIPE_API_KEY and STRIPE_PRICE_ID.')
     try:
-        session_params = dict(
+        session = stripe.checkout.Session.create(
             payment_method_types=['card'],
             mode='subscription',
             line_items=[{'price': STRIPE_PRICE_ID, 'quantity': 1}],
+            customer_email=body.email,
             client_reference_id=body.clerk_user_id,   # used in webhook to link sub → user
             success_url=body.success_url + '&session_id={CHECKOUT_SESSION_ID}',
             cancel_url=body.cancel_url,
             metadata={'clerk_user_id': body.clerk_user_id},
         )
-        # Only set customer_email when non-empty — Stripe will collect it on the
-        # checkout page otherwise (needed for social-login users with no email in Clerk)
-        if body.email:
-            session_params['customer_email'] = body.email
-        # Copy clerk_user_id into subscription metadata so the cancellation webhook
-        # can identify the user without a DB lookup (Stripe session metadata is NOT
-        # automatically inherited by the subscription object).
-        session_params['subscription_data'] = {
-            'metadata': {'clerk_user_id': body.clerk_user_id}
-        }
-        session = stripe.checkout.Session.create(**session_params)
         return {'url': session.url, 'session_id': session.id}
     except Exception as e:
         raise HTTPException(400, str(e))
 
 
-class ConfirmCheckoutRequest(BaseModel):
-    session_id:    str
-    clerk_user_id: str
-
-@app.post('/stripe/confirm-checkout')
-async def confirm_checkout(body: ConfirmCheckoutRequest):
-    """Webhook-free payment verification.
-
-    Called by the frontend when the user returns from Stripe with ?session_id=xxx.
-    Retrieves the checkout session directly from the Stripe API, verifies payment,
-    and immediately grants PRO access — no need to wait for a webhook delivery.
-
-    This is the primary activation path. Webhooks remain a useful backup for
-    async events (renewals, cancellations) but are not required for initial activation.
-    """
-    if not STRIPE_API_KEY:
-        raise HTTPException(503, 'Stripe not configured.')
-    try:
-        session = stripe.checkout.Session.retrieve(
-            body.session_id,
-            expand=['subscription'],
-        )
-    except Exception as e:
-        log.error(f'confirm_checkout: cannot retrieve session {body.session_id}: {e}')
-        raise HTTPException(400, f'Could not retrieve checkout session: {e}')
-
-    payment_status = getattr(session, 'payment_status', 'unpaid')
-    if payment_status != 'paid':
-        log.info(f'confirm_checkout: session {body.session_id} not paid yet ({payment_status})')
-        return {'is_pro': False, 'payment_status': payment_status}
-
-    # Extract subscription details — session.subscription is an expanded Subscription object
-    sub         = getattr(session, 'subscription', None)
-    sub_id      = getattr(sub, 'id', None)      if sub else None
-    customer_id = getattr(session, 'customer', None)
-    period_end  = getattr(sub, 'current_period_end', None) if sub else None
-
-    # Prefer session metadata for Clerk user ID; fall back to request body
-    metadata  = getattr(session, 'metadata', None) or {}
-    clerk_uid = (
-        metadata.get('clerk_user_id')
-        or getattr(session, 'client_reference_id', None)
-        or body.clerk_user_id
-    )
-
-    try:
-        upsert_subscription(
-            clerk_user_id=clerk_uid,
-            stripe_customer_id=customer_id,
-            stripe_sub_id=sub_id,
-            status='active',
-            period_end_ts=period_end,
-        )
-        log.info(f'confirm_checkout: PRO activated for {clerk_uid} (direct verification)')
-
-        # Update Clerk public metadata so isPro() on the client reads correctly
-        if CLERK_SECRET_KEY:
-            async with httpx.AsyncClient() as client:
-                res = await client.patch(
-                    f'https://api.clerk.com/v1/users/{clerk_uid}/metadata',
-                    headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
-                    json={'public_metadata': {'tier': 'PRO'}},
-                )
-                if res.status_code != 200:
-                    log.warning(f'confirm_checkout: Clerk metadata update failed: {res.text}')
-
-        return {'is_pro': True, 'status': 'activated', 'clerk_user_id': clerk_uid}
-    except Exception as e:
-        log.error(f'confirm_checkout: DB error for {clerk_uid}: {e}')
-        raise HTTPException(500, f'Failed to activate subscription: {e}')
-
-
-
 class PortalRequest(BaseModel):
     clerk_user_id: str
-    email:         str = ''
     return_url:    str = 'https://polyvision.app/dashboard/'
 
 @app.post('/billing/portal')
@@ -827,81 +748,20 @@ async def billing_portal(body: PortalRequest):
     Create a Stripe Customer Portal session so users can manage or cancel
     their subscription, update payment methods, and view invoices.
     Returns a {url} the frontend should redirect to.
-
-    Auto-recovery: if the stored stripe_customer_id is from the wrong Stripe
-    environment (e.g. live-mode customer with test-mode key), attempts to find
-    the customer by email and refreshes the DB record before retrying.
     """
     if not STRIPE_API_KEY:
         raise HTTPException(503, 'Stripe not configured.')
     sub = get_subscription(body.clerk_user_id)
-    customer_id = sub.get('stripe_customer_id') if sub else None
-    if not customer_id:
-        raise HTTPException(404, 'No subscription record found. Please subscribe first.')
+    if not sub or not sub.get('stripe_customer_id'):
+        raise HTTPException(404, 'No active subscription found for this user.')
     try:
         session = stripe.billing_portal.Session.create(
-            customer=customer_id,
+            customer=sub['stripe_customer_id'],
             return_url=body.return_url,
         )
         return {'url': session.url}
     except Exception as e:
-        err = str(e)
-        # Auto-recovery: stale customer ID (wrong Stripe environment or deleted customer)
-        if 'No such customer' in err:
-            email = body.email
-            # If frontend didn't supply email (e.g. Google SSO), fetch from Clerk server-side
-            if not email and CLERK_SECRET_KEY:
-                try:
-                    async with httpx.AsyncClient() as client:
-                        clerk_res = await client.get(
-                            f'https://api.clerk.com/v1/users/{body.clerk_user_id}',
-                            headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
-                        )
-                    if clerk_res.status_code == 200:
-                        ud = clerk_res.json()
-                        primary_id = ud.get('primary_email_address_id')
-                        for addr in ud.get('email_addresses', []):
-                            if not email or addr.get('id') == primary_id:
-                                email = addr.get('email_address', '')
-                                if addr.get('id') == primary_id:
-                                    break
-                except Exception as clerk_e:
-                    log.warning(f'billing_portal: Clerk email lookup failed: {clerk_e}')
-            if not email:
-                raise HTTPException(400, 'Could not resolve account email. Please contact support.')
-            log.warning(f'billing_portal: stale customer {customer_id} — searching by email {email}')
-            try:
-                customers = stripe.Customer.list(email=email, limit=1)
-                if customers.data:
-                    new_cid = customers.data[0].id
-                    log.info(f'billing_portal: found customer {new_cid} by email — updating DB')
-                    # Update the DB with the valid customer ID
-                    try:
-                        _conn = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
-                        with _conn.cursor() as cur:
-                            cur.execute(
-                                'UPDATE subscriptions SET stripe_customer_id=%s, updated_at=NOW() '
-                                'WHERE clerk_user_id=%s',
-                                (new_cid, body.clerk_user_id)
-                            )
-                        _conn.commit(); _conn.close()
-                    except Exception as db_e:
-                        log.warning(f'billing_portal: DB update failed: {db_e}')
-                    # Retry portal with the correct customer ID
-                    session = stripe.billing_portal.Session.create(
-                        customer=new_cid,
-                        return_url=body.return_url,
-                    )
-                    return {'url': session.url}
-                else:
-                    raise HTTPException(404,
-                        'No Stripe customer found for your email in this mode. '
-                        'Please complete a new subscription first.')
-            except HTTPException:
-                raise
-            except Exception as retry_e:
-                raise HTTPException(400, f'Could not open billing portal: {retry_e}')
-        raise HTTPException(400, err)
+        raise HTTPException(400, str(e))
 
 
 @app.post('/stripe/webhook')
@@ -941,21 +801,15 @@ async def stripe_webhook_canonical(request: Request):
              else event['data']['object'])
 
     if etype == 'checkout.session.completed':
-        data_meta = getattr(data, 'metadata', None) or {}
-        clerk_user_id = (
-            data_meta.get('clerk_user_id')
-            or getattr(data, 'client_reference_id', None) or ''
-        )
+        clerk_user_id = data.get('metadata', {}).get('clerk_user_id') or data.get('client_reference_id', '')
         if clerk_user_id:
             try:
-                sub_id_raw = getattr(data, 'subscription', None)
-                sub_id_str = getattr(sub_id_raw, 'id', None) if hasattr(sub_id_raw, 'id') else sub_id_raw
-                sub = stripe.Subscription.retrieve(sub_id_str) if sub_id_str else None
-                period_end = getattr(sub, 'current_period_end', None) if sub else None
+                sub = stripe.Subscription.retrieve(data['subscription'])
+                period_end = sub.get('current_period_end')
                 upsert_subscription(
                     clerk_user_id=clerk_user_id,
-                    stripe_customer_id=getattr(data, 'customer', None),
-                    stripe_sub_id=sub_id_str,
+                    stripe_customer_id=data['customer'],
+                    stripe_sub_id=data['subscription'],
                     status='active',
                     period_end_ts=period_end,
                 )
@@ -979,147 +833,36 @@ async def stripe_webhook_canonical(request: Request):
 
     elif etype in ('customer.subscription.deleted', 'customer.subscription.updated'):
         sub    = data
-        status = getattr(sub, 'status', 'unknown')
-        sub_meta = getattr(sub, 'metadata', None) or {}
-        clerk_uid = sub_meta.get('clerk_user_id', '')
+        status = sub['status']   # 'active','past_due','cancelled','unpaid'
+        clerk_uid = sub.get('metadata', {}).get('clerk_user_id', '')
         upsert_subscription(
             clerk_user_id=clerk_uid,
-            stripe_customer_id=getattr(sub, 'customer', None),
-            stripe_sub_id=getattr(sub, 'id', None),
+            stripe_customer_id=sub['customer'],
+            stripe_sub_id=sub['id'],
             status=status,
-            period_end_ts=getattr(sub, 'current_period_end', None),
+            period_end_ts=sub.get('current_period_end'),
         )
-        if status != 'active':
-            # Try metadata first (set at checkout for new subscriptions)
-            discord_uid = get_discord_user_id(clerk_uid) if clerk_uid else None
-
-            # Fallback: look up by Stripe customer_id in the DB
-            # (handles subscriptions created before subscription_data metadata was added)
-            if not discord_uid:
-                try:
-                    conn = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            'SELECT clerk_user_id, discord_user_id FROM subscriptions '
-                            'WHERE stripe_customer_id = %s LIMIT 1',
-                            (getattr(sub, 'customer', None),)
-                        )
-                        row = cur.fetchone()
-                    conn.close()
-                    if row:
-                        if not clerk_uid:
-                            clerk_uid = row[0]
-                        discord_uid = row[1]
-                except Exception as db_err:
-                    log.warning(f'Discord revoke DB fallback failed: {db_err}')
-
+        if status != 'active' and clerk_uid:
+            discord_uid = get_discord_user_id(clerk_uid)
             if discord_uid:
-                try:
-                    kick_from_server(discord_uid)   # removes from server so invite works on resubscribe
-                    log.info(f'Discord user kicked from server for {clerk_uid} (status: {status})')
-                except Exception as e:
-                    log.warning(f'Discord kick failed for {clerk_uid}: {e}')
-
-            # Clear discord_user_id from DB so they must re-link on resubscription
-            if clerk_uid:
-                try:
-                    _dconn = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
-                    with _dconn.cursor() as cur:
-                        cur.execute(
-                            'UPDATE subscriptions SET discord_user_id=NULL, updated_at=NOW() '
-                            'WHERE clerk_user_id=%s',
-                            (clerk_uid,)
-                        )
-                    _dconn.commit(); _dconn.close()
-                    log.info(f'discord_user_id cleared for {clerk_uid}')
-                except Exception as dbe:
-                    log.warning(f'discord_user_id clear failed: {dbe}')
-
-            # Revoke Clerk publicMetadata so the frontend immediately shows FREE
-            if CLERK_SECRET_KEY and clerk_uid:
-                try:
-                    async with httpx.AsyncClient() as client:
-                        res = await client.patch(
-                            f'https://api.clerk.com/v1/users/{clerk_uid}/metadata',
-                            headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
-                            json={'public_metadata': {'tier': 'FREE'}},
-                        )
-                    if res.status_code == 200:
-                        log.info(f'Clerk tier set to FREE for {clerk_uid}')
-                    else:
-                        log.warning(f'Clerk metadata revoke failed for {clerk_uid}: {res.text}')
-                except Exception as e:
-                    log.warning(f'Clerk metadata revoke error for {clerk_uid}: {e}')
-
-            # Ensure DB status is consistent
-            cancel_subscription(getattr(sub, 'customer', '') or '')
+                revoke_pro_role(discord_uid)
 
     elif etype == 'invoice.payment_failed':
-        cancel_subscription(getattr(data, 'customer', None))
-        log.warning(f'Payment failed — downgraded customer: {getattr(data, "customer", None)}')
+        cancel_subscription(data['customer'])
+        log.warning(f'Payment failed — downgraded customer: {data["customer"]}')
         try:
             conn = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
             with conn.cursor() as cur:
                 cur.execute(
                     'SELECT clerk_user_id, discord_user_id FROM subscriptions WHERE stripe_customer_id = %s LIMIT 1',
-                    (getattr(data, 'customer', None),)
+                    (data['customer'],)
                 )
                 row = cur.fetchone()
             conn.close()
             if row and row[1]:
-                kick_from_server(row[1])   # kick from server, not just role revoke
-                # Clear discord_user_id from DB
-                try:
-                    _c = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
-                    with _c.cursor() as cur:
-                        cur.execute('UPDATE subscriptions SET discord_user_id=NULL, updated_at=NOW() WHERE stripe_customer_id=%s', (data['customer'],))
-                    _c.commit(); _c.close()
-                except Exception:
-                    pass
+                revoke_pro_role(row[1])
         except Exception as e:
             log.warning(f'Discord revoke on payment failure: {e}')
-
-    elif etype == 'customer.deleted':
-        # A Stripe customer was deleted (e.g. via Dashboard). Revoke PRO immediately.
-        stripe_customer_id = data.get('id')
-        log.info(f'stripe webhook: customer.deleted for {stripe_customer_id}')
-        try:
-            _conn = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
-            with _conn.cursor() as cur:
-                cur.execute(
-                    'SELECT clerk_user_id, discord_user_id FROM subscriptions '
-                    'WHERE stripe_customer_id = %s LIMIT 1',
-                    (stripe_customer_id,)
-                )
-                row = _conn.cursor().fetchone() if False else cur.fetchone()
-            _conn.close()
-            if row:
-                clerk_uid, discord_uid = row[0], row[1]
-                # Update DB
-                cancel_subscription(stripe_customer_id)
-                # Revoke Clerk metadata
-                if CLERK_SECRET_KEY and clerk_uid:
-                    async with httpx.AsyncClient() as client:
-                        await client.patch(
-                            f'https://api.clerk.com/v1/users/{clerk_uid}/metadata',
-                            headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
-                            json={'public_metadata': {'tier': 'FREE'}},
-                        )
-                    log.info(f'customer.deleted: Clerk tier set to FREE for {clerk_uid}')
-                # Kick from Discord server (so invite works on resubscription)
-                if discord_uid:
-                    try:
-                        kick_from_server(discord_uid)
-                        log.info(f'customer.deleted: kicked {discord_uid} from server')
-                        # Clear discord_user_id from DB
-                        _cd = __import__('psycopg2').connect(DATABASE_URL, connect_timeout=5)
-                        with _cd.cursor() as cur:
-                            cur.execute('UPDATE subscriptions SET discord_user_id=NULL, updated_at=NOW() WHERE stripe_customer_id=%s', (stripe_customer_id,))
-                        _cd.commit(); _cd.close()
-                    except Exception as de:
-                        log.warning(f'customer.deleted: Discord kick failed: {de}')
-        except Exception as e:
-            log.warning(f'customer.deleted: revoke failed: {e}')
 
     return {'received': True}
 
@@ -1128,31 +871,6 @@ async def stripe_webhook_canonical(request: Request):
 DISCORD_CLIENT_ID     = os.getenv('DISCORD_CLIENT_ID', '')
 DISCORD_CLIENT_SECRET = os.getenv('DISCORD_CLIENT_SECRET', '')
 DISCORD_INVITE_URL    = os.getenv('DISCORD_INVITE_URL', '')   # public invite link to the server
-
-
-
-@app.get('/discord/verify-access')
-async def discord_verify_access(clerk_user_id: str):
-    """
-    Called by the dashboard 'Open Server' button before opening Discord.
-    Ensures the user's PRO role is granted even if it was missed at OAuth time.
-    Returns {discord_url} to redirect to.
-    """
-    discord_url = f'https://discord.com/channels/{os.getenv("DISCORD_GUILD_ID", "1485011217381589022")}'
-    if not clerk_user_id:
-        return {'discord_url': discord_url, 'role_granted': False}
-
-    # Only grant role if user is actually PRO
-    if not is_pro(clerk_user_id):
-        return {'discord_url': discord_url, 'role_granted': False}
-
-    discord_uid = get_discord_user_id(clerk_user_id)
-    if discord_uid:
-        result = grant_pro_role(discord_uid)
-        log.info(f'verify-access: PRO role {"granted" if result else "failed"} for {clerk_user_id}')
-        return {'discord_url': discord_url, 'role_granted': result}
-
-    return {'discord_url': discord_url, 'role_granted': False}
 
 
 @app.get('/discord/oauth/start')
@@ -1170,7 +888,7 @@ async def discord_oauth_start(clerk_user_id: str):
         f'?client_id={DISCORD_CLIENT_ID}'
         f'&redirect_uri={redirect_uri}'
         f'&response_type=code'
-        f'&scope=identify%20guilds.join'
+        f'&scope=identify'
         f'&state={clerk_user_id}'
     )
     from fastapi.responses import RedirectResponse
@@ -1192,7 +910,7 @@ async def discord_oauth_callback(code: str = '', state: str = '', error: str = '
     brain_url     = os.getenv('BRAIN_URL', 'https://polyvision-production.up.railway.app')
     redirect_uri  = f'{brain_url}/discord/oauth/callback'
 
-    discord_user_id, access_token, discord_error = exchange_code_for_user_id(code, redirect_uri)
+    discord_user_id, discord_error = exchange_code_for_user_id(code, redirect_uri)
     if not discord_user_id:
         return HTMLResponse(
             f'<html><body style="font-family:monospace;padding:20px;background:#1a1a2e;color:#ff6b6b">'
@@ -1204,19 +922,12 @@ async def discord_oauth_callback(code: str = '', state: str = '', error: str = '
             status_code=500
         )
 
-    # Store the Discord link
+    # Store the link
     link_discord(clerk_user_id, discord_user_id)
 
-    # Auto-add user to the Discord server (guilds.join scope) + grant PRO role
-    # This replaces the manual invite flow — no invite acceptance needed.
-    if is_pro(clerk_user_id) and access_token:
-        added = add_to_guild(discord_user_id, access_token)
-        if not added:
-            # Fallback: try role-only grant (user might already be in server)
-            grant_pro_role(discord_user_id)
-    elif access_token:
-        # Not yet PRO — add to server anyway, role will be granted on checkout
-        add_to_guild(discord_user_id, access_token)
+    # If user is already PRO, grant the role immediately
+    if is_pro(clerk_user_id):
+        grant_pro_role(discord_user_id)
 
     # Close the popup and notify the parent window
     invite_html = f'<p>Join the server: <a href="{DISCORD_INVITE_URL}" target="_blank">Click here</a></p>' if DISCORD_INVITE_URL else ''
@@ -1239,63 +950,10 @@ async def discord_oauth_callback(code: str = '', state: str = '', error: str = '
 
 @app.get('/subscription/status')
 async def subscription_status(clerk_user_id: str):
-    """Return PRO status — always verified against Stripe when DB says active.
-
-    This prevents stale PRO status when a customer is deleted or subscription
-    cancelled outside of normal webhook flow (e.g. via Stripe Dashboard).
-    """
+    """Return PRO status for a Clerk user — called by the dashboard on load."""
     if not clerk_user_id:
         raise HTTPException(400, 'clerk_user_id required')
-    sub = get_subscription(clerk_user_id)
-
-    # If DB says active, verify with Stripe that the subscription actually exists
-    if sub.get('is_pro') and STRIPE_API_KEY and sub.get('stripe_customer_id'):
-        try:
-            # List subscriptions for this customer in Stripe
-            subs = stripe.Subscription.list(
-                customer=sub['stripe_customer_id'],
-                status='active',
-                limit=1,
-            )
-            if not subs.data:
-                # Stripe has no active subscription — DB is stale, revoke PRO
-                log.warning(f'subscription_status: DB says active but Stripe has none — revoking {clerk_user_id}')
-                cancel_subscription(sub['stripe_customer_id'])
-                # Revoke Clerk metadata
-                if CLERK_SECRET_KEY:
-                    try:
-                        async with httpx.AsyncClient() as client:
-                            await client.patch(
-                                f'https://api.clerk.com/v1/users/{clerk_user_id}/metadata',
-                                headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
-                                json={'public_metadata': {'tier': 'FREE'}},
-                            )
-                    except Exception as ce:
-                        log.warning(f'subscription_status: Clerk revoke failed: {ce}')
-                # Return correct FREE status
-                sub['is_pro'] = False
-                sub['status'] = 'cancelled'
-        except stripe.error.InvalidRequestError:
-            # Customer doesn't exist in Stripe (deleted) — revoke PRO
-            log.warning(f'subscription_status: Stripe customer not found — revoking {clerk_user_id}')
-            cancel_subscription(sub['stripe_customer_id'])
-            if CLERK_SECRET_KEY:
-                try:
-                    async with httpx.AsyncClient() as client:
-                        await client.patch(
-                            f'https://api.clerk.com/v1/users/{clerk_user_id}/metadata',
-                            headers={'Authorization': f'Bearer {CLERK_SECRET_KEY}'},
-                            json={'public_metadata': {'tier': 'FREE'}},
-                        )
-                except Exception:
-                    pass
-            sub['is_pro'] = False
-            sub['status'] = 'cancelled'
-        except Exception as se:
-            # If Stripe check fails (network, etc.), trust the DB to avoid false downgrades
-            log.warning(f'subscription_status: Stripe verify failed, trusting DB: {se}')
-
-    return sub
+    return get_subscription(clerk_user_id)
 
 
 # ── Profile Recalculation Cron ───────────────────────────────────────────────

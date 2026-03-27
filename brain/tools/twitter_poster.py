@@ -49,6 +49,15 @@ TWITTER_KALSHI_MIN_SIZE     = float(os.getenv("TWITTER_KALSHI_MIN_SIZE", "5000")
 REDIS_URL                   = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 TWEET_DEDUP_TTL             = 900   # 15 minutes: skip repeat tweets for same market
 
+# ── Startup credential audit (INFO level — visible in Railway logs) ────────────
+log.info("[Twitter] ENV audit → "
+         f"API_KEY={'SET' if TWITTER_API_KEY else 'MISSING'} | "
+         f"API_KEY_SECRET={'SET' if TWITTER_API_KEY_SECRET else 'MISSING'} | "
+         f"ACCESS_TOKEN={'SET' if TWITTER_ACCESS_TOKEN else 'MISSING'} | "
+         f"ACCESS_TOKEN_SECRET={'SET' if TWITTER_ACCESS_TOKEN_SECRET else 'MISSING'} | "
+         f"MIN_SIZE_POLY=${TWITTER_MIN_SIZE:,.0f} | "
+         f"MIN_SIZE_KALSHI=${TWITTER_KALSHI_MIN_SIZE:,.0f}")
+
 
 # ── Credentials check ─────────────────────────────────────────────────────────
 def _credentials_set() -> bool:
@@ -170,10 +179,12 @@ def maybe_tweet(payload: dict, dry_run: bool = False) -> dict:
     # Threshold gate
     threshold = TWITTER_KALSHI_MIN_SIZE if source == "KALSHI" else TWITTER_MIN_SIZE
     if usd_value < threshold:
-        log.debug(
+        log.info(
             f"[Twitter] Skipped ({source}): ${usd_value:,.0f} < ${threshold:,.0f} threshold"
         )
         return {"status": "skipped_below_threshold", "threshold": threshold}
+
+    log.info(f"[Twitter] Trade qualifies ({source}): ${usd_value:,.0f} >= ${threshold:,.0f} — proceeding to post")
 
     tweet_text = format_tweet(payload)
 
@@ -186,7 +197,7 @@ def maybe_tweet(payload: dict, dry_run: bool = False) -> dict:
 
     # Credentials check (production only)
     if not _credentials_set():
-        log.debug("[Twitter] Credentials not set — skipping.")
+        log.warning("[Twitter] Credentials not set — skipping. Check TWITTER_API_KEY / TWITTER_ACCESS_TOKEN env vars on Railway.")
         return {"status": "skipped_no_credentials"}
 
     # Deduplication check
