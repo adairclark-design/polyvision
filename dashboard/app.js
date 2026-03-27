@@ -2383,6 +2383,18 @@ window.openXrayModal = async function (wallet, handle, defaultTab) {
   const openPositions = positions.filter(p => p.is_open);
   const closedPositions = positions.filter(p => !p.is_open);
 
+  // ── Win Rate: profitable closed positions ÷ total closed positions ──
+  // A "win" = any closed position with net_pnl > 0 (includes early profitable exits)
+  const winCount   = closedPositions.filter(p => (p.net_pnl ?? 0) > 0).length;
+  const winRatePct = closedPositions.length > 0
+    ? Math.round(winCount / closedPositions.length * 100)
+    : null;
+  const winRateStr  = winRatePct !== null ? `${winRatePct}%` : 'N/A';
+  const winRateColor = winRatePct === null ? 'var(--text-muted)'
+    : winRatePct >= 60 ? 'var(--mint)'
+    : winRatePct >= 40 ? '#f0b429'
+    : 'var(--rose)';
+
   const renderPositions = (arr) => arr.length === 0
     ? '<p style="color:var(--text-muted);font-size:12px;padding:8px 0">No positions found.</p>'
     : arr.map(p => {
@@ -2437,12 +2449,16 @@ window.openXrayModal = async function (wallet, handle, defaultTab) {
                 <span class="stat-value">$${vol.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
             </div>
             <div class="stat-block">
+                <span class="stat-label">Win Rate</span>
+                <span class="stat-value" style="color:${winRateColor}">${winRateStr}</span>
+            </div>
+            <div class="stat-block">
                 <span class="stat-label">Open Positions</span>
                 <span class="stat-value">${openPositions.length}</span>
             </div>
             <div class="stat-block">
-                <span class="stat-label">Markets Tracked</span>
-                <span class="stat-value">${positions.length}</span>
+                <span class="stat-label">Closed Positions</span>
+                <span class="stat-value">${closedPositions.length}</span>
             </div>
         </div>
 
