@@ -2353,7 +2353,7 @@ window.openXrayModal = async function (wallet, handle, defaultTab) {
             </div>
         </div>
         <div class="xray-loading">⏳ Loading wallet X-Ray data…</div>`;
-  $('modalOverlay').classList.add('active');
+  $('modalOverlay').classList.add('open');
 
   // Destroy any previous Chart.js instance
   if (xrayChartInstance) { xrayChartInstance.destroy(); xrayChartInstance = null; }
