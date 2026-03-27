@@ -1,68 +1,30 @@
-/* ── PolyVision Command Center — Application Logic ─────────────────────────── */
-'use strict';
-
-// ── Data: Whale Personas ─────────────────────────────────────────────────────
+// jsDelivr CDN serves these directly from GitHub — bypasses Cloudflare SPA routing
+const _CDN = 'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets';
 const WHALES = [
-  {
-    id: 'oracle',
-    handle: 'The Oracle of Oregon',
-    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=oracle&backgroundColor=0f172a',
-    wallet: '0xDeAd...f1234',
-    winRate: 0.92,
-    roi30d: 0.38,
-    roiAllTime: 1.22,
-    totalVolume: 2_840_000,
-    dominantCategory: 'US Politics',
-    totalTrades: 187,
-    badge: '92% Election Accuracy',
-    sparkData: [0, 4, 2, 8, 6, 12, 9, 15, 11, 18, 14, 22, 19, 28, 24, 31, 27, 35, 30, 38],
-    recentTrades: [
-      { market: 'Will Fed cut rates in March 2026?', outcome: 'YES', size: 50000 },
-      { market: 'Trump approval above 45% in April?', outcome: 'YES', size: 28000 },
-      { market: 'Hamas ceasefire held through Feb?', outcome: 'NO', size: 17000 },
-    ],
-  },
-  {
-    id: 'strategist',
-    handle: 'The Strategist of Chicago',
-    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=strategist&backgroundColor=0f172a',
-    wallet: '0xC4f3...a901',
-    winRate: 0.78,
-    roi30d: 0.21,
-    roiAllTime: 0.82,
-    totalVolume: 1_520_000,
-    dominantCategory: 'Crypto Markets',
-    totalTrades: 214,
-    badge: '78% ROI on Crypto Calls',
-    sparkData: [10, 8, 12, 6, 15, 10, 18, 14, 20, 16, 22, 17, 25, 20, 28, 22, 26, 23, 29, 25],
-    recentTrades: [
-      { market: 'BTC above $100k by end of March?', outcome: 'YES', size: 75000 },
-      { market: 'ETH ETF net inflow positive in Feb?', outcome: 'YES', size: 31000 },
-      { market: 'Coinbase stock above $300?', outcome: 'NO', size: 22000 },
-    ],
-  },
-  {
-    id: 'pioneer',
-    handle: 'The Pioneer of the Pacific Northwest',
-    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=pioneer&backgroundColor=0f172a',
-    wallet: '0x9b2E...de45',
-    winRate: 0.71,
-    roi30d: 0.15,
-    roiAllTime: 0.61,
-    totalVolume: 980_000,
-    dominantCategory: 'Global Events',
-    totalTrades: 156,
-    badge: '71% Cross-Market Win Rate',
-    sparkData: [5, 7, 4, 9, 6, 11, 8, 13, 10, 15, 12, 17, 13, 18, 14, 20, 16, 21, 18, 22],
-    recentTrades: [
-      { market: 'NATO expansion before June 2026?', outcome: 'NO', size: 12000 },
-      { market: 'UK inflation below 2% in Q1?', outcome: 'YES', size: 18500 },
-      { market: 'Elon Musk DOGE role until July?', outcome: 'YES', size: 42000 },
-    ],
-  },
+  { id:'w1',  handle:'The Oracle of Oregon',         avatar:`${_CDN}/whale_avatar_1.png`,  winRate:0.92, roi30d:0.38, totalVolume:2840000, totalTrades:187, badge:'92% Win Rate', sparkData:[0,4,2,8,6,12,9,15,11,18,14,22,19,28,24,31,27,35,30,38] },
+  { id:'w2',  handle:'The Strategist of Chicago',    avatar:`${_CDN}/whale_avatar_2.png`,  winRate:0.78, roi30d:0.21, totalVolume:1520000, totalTrades:214, badge:'78% Win Rate', sparkData:[10,8,12,6,15,10,18,14,20,16,22,17,25,20,28,22,26,23,29,25] },
+  { id:'w3',  handle:'The Pioneer of the Pacific Northwest', avatar:`${_CDN}/whale_avatar_3.png`, winRate:0.71, roi30d:0.15, totalVolume:980000, totalTrades:156, badge:'71% Win Rate', sparkData:[5,7,4,9,6,11,8,13,10,15,12,17,13,18,14,20,16,21,18,22] },
+  { id:'w4',  handle:'The Tactician of Oregon',      avatar:`${_CDN}/whale_avatar_4.png`,  winRate:0.68, roi30d:0.19, totalVolume:870000,  totalTrades:203, badge:'68% Win Rate', sparkData:[3,5,4,8,7,10,9,12,11,14,13,16,15,18,17,20,19,22,21,24] },
+  { id:'w5',  handle:'The Visionary of Denver',      avatar:`${_CDN}/whale_avatar_5.png`,  winRate:0.74, roi30d:0.27, totalVolume:1100000, totalTrades:178, badge:'74% Win Rate', sparkData:[2,3,5,4,7,6,9,8,11,10,13,12,15,14,17,16,19,18,21,20] },
+  { id:'w6',  handle:'The Architect of Seattle',     avatar:`${_CDN}/whale_avatar_6.png`,  winRate:0.65, roi30d:0.12, totalVolume:740000,  totalTrades:131, badge:'65% Win Rate', sparkData:[1,2,3,5,4,6,5,7,6,8,7,9,8,10,9,11,10,12,11,13] },
+  { id:'w7',  handle:'The Navigator of Boston',      avatar:`${_CDN}/whale_avatar_7.png`,  winRate:0.82, roi30d:0.33, totalVolume:1950000, totalTrades:244, badge:'82% Win Rate', sparkData:[5,8,6,11,9,14,12,17,15,20,18,23,21,26,24,29,27,32,30,35] },
+  { id:'w8',  handle:'The Analyst of New York',      avatar:`${_CDN}/whale_avatar_8.png`,  winRate:0.61, roi30d:0.08, totalVolume:610000,  totalTrades:98,  badge:'61% Win Rate', sparkData:[4,3,5,4,6,5,7,6,8,7,9,8,10,9,11,10,12,11,13,12] },
+  { id:'w9',  handle:'The Sentinel of Austin',       avatar:`${_CDN}/whale_avatar_9.png`,  winRate:0.77, roi30d:0.24, totalVolume:1340000, totalTrades:189, badge:'77% Win Rate', sparkData:[6,8,7,10,9,12,11,14,13,16,15,18,17,20,19,22,21,24,23,26] },
+  { id:'w10', handle:'The Scholar of San Francisco', avatar:`${_CDN}/whale_avatar_10.png`, winRate:0.70, roi30d:0.17, totalVolume:920000,  totalTrades:162, badge:'70% Win Rate', sparkData:[3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22] },
+  { id:'w11', handle:'The Commander of Miami',       avatar:`${_CDN}/whale_avatar_11.png`, winRate:0.85, roi30d:0.41, totalVolume:2100000, totalTrades:221, badge:'85% Win Rate', sparkData:[8,11,9,14,12,17,15,20,18,23,21,26,24,29,27,32,30,35,33,38] },
+  { id:'w12', handle:'The Virtuoso of Seattle',      avatar:`${_CDN}/whale_avatar_12.png`, winRate:0.63, roi30d:0.10, totalVolume:680000,  totalTrades:119, badge:'63% Win Rate', sparkData:[2,3,4,3,5,4,6,5,7,6,8,7,9,8,10,9,11,10,12,11] },
+  { id:'w13', handle:'The Pathfinder of Las Vegas',  avatar:`${_CDN}/whale_avatar_13.png`, winRate:0.73, roi30d:0.22, totalVolume:1060000, totalTrades:175, badge:'73% Win Rate', sparkData:[4,6,5,8,7,10,9,12,11,14,13,16,15,18,17,20,19,22,21,24] },
+  { id:'w14', handle:'The Maverick of Dallas',       avatar:`${_CDN}/whale_avatar_14.png`, winRate:0.69, roi30d:0.16, totalVolume:830000,  totalTrades:143, badge:'69% Win Rate', sparkData:[3,5,4,7,6,9,8,11,10,13,12,15,14,17,16,19,18,21,20,23] },
+  { id:'w15', handle:'The Operative of Phoenix',     avatar:`${_CDN}/whale_avatar_15.png`, winRate:0.76, roi30d:0.25, totalVolume:1230000, totalTrades:196, badge:'76% Win Rate', sparkData:[5,7,6,9,8,11,10,13,12,15,14,17,16,19,18,21,20,23,22,25] },
+  { id:'w16', handle:'The Engineer of Houston',      avatar:`${_CDN}/whale_avatar_16.png`, winRate:0.66, roi30d:0.13, totalVolume:770000,  totalTrades:127, badge:'66% Win Rate', sparkData:[2,4,3,6,5,8,7,10,9,12,11,14,13,16,15,18,17,20,19,22] },
+  { id:'w17', handle:'The Forecaster of Atlanta',    avatar:`${_CDN}/whale_avatar_17.png`, winRate:0.80, roi30d:0.30, totalVolume:1760000, totalTrades:237, badge:'80% Win Rate', sparkData:[7,9,8,12,11,15,14,18,17,21,20,24,23,27,26,30,29,33,32,36] },
+  { id:'w18', handle:'The Operator of Chicago',      avatar:`${_CDN}/whale_avatar_18.png`, winRate:0.62, roi30d:0.09, totalVolume:640000,  totalTrades:108, badge:'62% Win Rate', sparkData:[2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12] },
+  { id:'w19', handle:'The Watcher of Portland',      avatar:`${_CDN}/whale_avatar_19.png`, winRate:0.75, roi30d:0.23, totalVolume:1150000, totalTrades:182, badge:'75% Win Rate', sparkData:[4,6,5,8,7,10,9,12,11,14,13,16,15,18,17,20,19,22,21,24] },
+  { id:'w20', handle:'The Phantom of New Orleans',   avatar:`${_CDN}/whale_avatar_20.png`, winRate:0.88, roi30d:0.44, totalVolume:2380000, totalTrades:258, badge:'88% Win Rate', sparkData:[9,12,10,15,13,18,16,21,19,24,22,27,25,30,28,33,31,36,34,39] },
 ];
 
 // ── Data: Market Templates ────────────────────────────────────────────────────
+
 const MARKETS = [
   'Will the Fed cut rates in March 2026?',
   'BTC above $100k by end of April 2026?',
