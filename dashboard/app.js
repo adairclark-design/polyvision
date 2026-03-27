@@ -2150,53 +2150,7 @@ function renderGlobalLeaderboard(traders) {
   }).join('');
 }
 
-window.openLbTraderModal = function (wallet, handle, traderData) {
-  const trader = typeof traderData === 'string' ? JSON.parse(traderData) : traderData;
-  const pnlPos = trader.pnl >= 0;
-  const pnlStr = (pnlPos ? '+$' : '-$') + Math.abs(trader.pnl).toLocaleString('en-US', { maximumFractionDigits: 0 });
-
-  $('modalContent').innerHTML = `
-        <div class="modal-header">
-            <div class="modal-avatar">👑</div>
-            <div class="modal-title-block">
-                <h2 class="modal-trader-name">${handle}</h2>
-                <p class="modal-wallet">${wallet ? wallet.slice(0, 10) + '…' + wallet.slice(-6) : 'Unknown Wallet'}</p>
-            </div>
-        </div>
-        <div class="modal-section-label">ALL-TIME PERFORMANCE</div>
-        <div class="modal-stats-grid">
-            <div class="stat-block">
-                <span class="stat-label">All-Time P&L</span>
-                <span class="stat-value ${pnlPos ? 'positive' : 'negative'}">${pnlStr}</span>
-            </div>
-            <div class="stat-block">
-                <span class="stat-label">Win Rate</span>
-                <span class="stat-value">${t.win_rate ? (t.win_rate * 100).toFixed(1) + '%' : 'New'}</span>
-            </div>
-            <div class="stat-block">
-                <span class="stat-label">Total Trades</span>
-                <span class="stat-value">${trader.trades ? trader.trades.toLocaleString() : 'N/A'}</span>
-            </div>
-            <div class="stat-block">
-                <span class="stat-label">Volume</span>
-                <span class="stat-value">$${trader.volume ? trader.volume.toLocaleString('en-US', { maximumFractionDigits: 0 }) : 'N/A'}</span>
-            </div>
-            <div class="stat-block">
-                <span class="stat-label">Global Rank</span>
-                <span class="stat-value">#${trader.rank}</span>
-            </div>
-        </div>
-        <div class="modal-section-label">WALLET</div>
-        <div class="modal-trade-box">
-            <code style="font-size:11px;color:var(--text-muted);word-break:break-all">${wallet || 'N/A'}</code>
-        </div>
-        <div class="modal-actions">
-            <a class="btn-modal-primary" href="https://polymarket.com/profile/${wallet}" target="_blank" rel="noopener">
-                🔗 View on Polymarket
-            </a>
-        </div>`;
-  $('modalOverlay').classList.add('active');
-};
+// openLbTraderModal is defined below (after openXrayModal) — see line ~2416
 
 
 // ── Wallet X-Ray (3-tab deep profile) ─────────────────────────────────────────
