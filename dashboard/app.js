@@ -579,6 +579,9 @@ async function _processWinRateQueue() {
             if (wrDecimal !== null) ev.whale.winRate = wrDecimal;
             if (allTimePnl !== null) ev.whale.roi30d = allTimePnl; // repurpose roi30d for all-time P&L
             if (profile.handle) ev.whale.handle = profile.handle; // use real Polymarket username
+            // Update Pulse card handle in-place
+            const handleEl = document.getElementById(`handle-${cardId}`);
+            if (handleEl && profile.handle) handleEl.textContent = profile.handle;
           }
         });
 
@@ -791,7 +794,7 @@ function buildEventCard(ev) {
       <img class="card-avatar ${sideClass}" src="${ev.whale.avatar}" alt="${ev.whale.handle}"
            style="outline: 2.5px solid ${traderAccentColor(ev.whale.wallet, ev.whale.handle)}; outline-offset: 1px;" />
       <div class="card-meta">
-        <div class="card-handle">${ev.whale.handle}</div>
+        <div class="card-handle" id="handle-${ev.id}">${ev.whale.handle}</div>
         <div class="card-time">${timeAgo(ev.timestamp)}</div>
       </div>
       <div class="card-badges">
