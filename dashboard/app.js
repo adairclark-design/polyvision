@@ -556,15 +556,33 @@ async function _processWinRateQueue() {
         const profile = await resp.json();
         const positions = profile.positions || [];
         const closed = positions.filter(p => !p.is_open);
+
+        // Compute win rate from closed positions
+        let wrDecimal = null;
         if (closed.length > 0) {
           const wins = closed.filter(p => (p.net_pnl || 0) > 0).length;
           const wr = Math.round(wins / closed.length * 100);
+          wrDecimal = wr / 100;
+
+          // 1. Update the Pulse card badge in-place
           const badge = document.getElementById(`wr-${cardId}`);
           if (badge) {
             badge.textContent = `${wr}% (${closed.length})`;
             badge.className = `value ${wr >= 75 ? 'positive' : 'neutral'}`;
           }
         }
+
+        // 2. Patch ALL state.events for this wallet so the LIVE leaderboard updates
+        const allTimePnl = profile.all_time_pnl ?? null;
+        state.events.forEach(ev => {
+          if (ev.whale?.wallet === wallet) {
+            if (wrDecimal !== null) ev.whale.winRate = wrDecimal;
+            if (allTimePnl !== null) ev.whale.roi30d = allTimePnl; // repurpose roi30d for all-time P&L
+          }
+        });
+
+        // 3. Re-render the LIVE leaderboard with updated whale data
+        renderLeaderboard();
       }
     } catch (_) { /* silently skip — never stall the queue */ }
     await new Promise(r => setTimeout(r, 1000)); // 1 fetch/sec rate limit
@@ -918,8 +936,8 @@ function renderLeaderboard() {
           <span class="ws-value" style="color:var(--mint)">${fmtWinRate(w.winRate)}</span>
         </div>
         <div class="ws">
-          <span class="ws-label">30D ROI</span>
-          <span class="ws-value" style="color:var(--mint)">${fmtPct(w.roi30d)}</span>
+          <span class="ws-label">All-Time P&L</span>
+          <span class="ws-value" style="color:${(w.roi30d||0) >= 0 ? 'var(--mint)' : 'var(--rose)'}">${w.roi30d != null ? ((w.roi30d >= 0 ? '+$' : '-$') + Math.abs(w.roi30d).toLocaleString('en-US', { maximumFractionDigits: 0 })) : '—'}</span>
         </div>
         <div class="ws">
           <span class="ws-label">Badge</span>
