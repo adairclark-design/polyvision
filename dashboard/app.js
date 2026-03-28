@@ -920,9 +920,7 @@ function renderLeaderboard() {
     const shortWallet = w.wallet ? `${w.wallet.slice(0, 6)}…${w.wallet.slice(-4)}` : '';
 
     return `
-    <div class="whale-card" onclick="openWhaleModal(${JSON.stringify({
-      wallet: w.wallet, handle: w.handle, winRate: w.winRate, roi30d: w.roi30d
-    }).replace(/"/g, '&quot;')})">
+    <div class="whale-card" onclick="openLbTraderModal('${w.wallet}', '${w.handle.replace(/'/g, "\\'")}')">
       <div class="whale-card-top">
         <span class="whale-rank ${isTop ? 'top' : ''}">#${rank}</span>
         <div class="whale-info">
