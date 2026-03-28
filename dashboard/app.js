@@ -527,6 +527,52 @@ function fmtWinRate(wr, resolvedCount) {
   return `${pct}%`;
 }
 
+// ── Rate-Limited Win Rate Lazy-Loader ────────────────────────────────────────
+// After cards render, queue win rate fetches 1/sec for cards with no data.
+// Uses Brain /wallet/{wallet}/xray endpoint (Redis-cached 60s).
+// Updates the #wr-{id} badge span on each card in-place.
+const _wrQueue = [];
+let _wrRunning = false;
+
+function queueWinRateFetch(wallet, cardId) {
+  if (!wallet || !cardId) return;
+  if (_wrQueue.some(q => q.cardId === cardId)) return; // no duplicates
+  _wrQueue.push({ wallet, cardId });
+  if (!_wrRunning) _processWinRateQueue();
+}
+
+async function _processWinRateQueue() {
+  _wrRunning = true;
+  while (_wrQueue.length > 0) {
+    const { wallet, cardId } = _wrQueue.shift();
+    const el = document.getElementById(`wr-${cardId}`);
+    if (!el) { await new Promise(r => setTimeout(r, 1000)); continue; } // card dismissed
+    try {
+      const resp = await fetch(
+        `${BRAIN_URL}/wallet/${wallet}/xray`,
+        { signal: AbortSignal.timeout(12000) }
+      );
+      if (resp.ok) {
+        const profile = await resp.json();
+        const positions = profile.positions || [];
+        const closed = positions.filter(p => !p.is_open);
+        if (closed.length > 0) {
+          const wins = closed.filter(p => (p.net_pnl || 0) > 0).length;
+          const wr = Math.round(wins / closed.length * 100);
+          const badge = document.getElementById(`wr-${cardId}`);
+          if (badge) {
+            badge.textContent = `${wr}%`;
+            badge.className = `value ${wr >= 75 ? 'positive' : 'neutral'}`;
+          }
+        }
+      }
+    } catch (_) { /* silently skip — never stall the queue */ }
+    await new Promise(r => setTimeout(r, 1000)); // 1 fetch/sec rate limit
+  }
+  _wrRunning = false;
+}
+
+
 function timeAgo(ms) {
   const s = Math.floor((Date.now() - ms) / 1000);
   if (s < 60) return `${s}s ago`;
@@ -749,7 +795,7 @@ function buildEventCard(ev) {
       </div>
       <div class="stat">
         <span class="label">WIN RATE</span>
-        <span class="value ${(ev.whale.winRate||0) >= 0.75 ? 'positive' : 'neutral'}">${fmtWinRate(ev.whale.winRate, ev.wallet_resolved_trades)}</span>
+        <span class="value ${(ev.whale.winRate||0) >= 0.75 ? 'positive' : 'neutral'}" id="wr-${ev.id}">${fmtWinRate(ev.whale.winRate, ev.wallet_resolved_trades)}</span>
       </div>
       <div class="conviction-bar">
         <div>
@@ -1122,6 +1168,13 @@ function renderFeed() {
   }
 
   pulseFeed.innerHTML = events.map(buildEventCard).join('');
+
+  // Queue win rate lazy-loads for any card where win rate is missing
+  events.forEach(ev => {
+    if (!(ev.whale?.winRate) && ev.whale?.wallet) {
+      queueWinRateFetch(ev.whale.wallet, ev.id);
+    }
+  });
 
   // Keep the LIVE leaderboard in sync with new events
   renderLeaderboard();
