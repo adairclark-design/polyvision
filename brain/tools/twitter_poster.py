@@ -32,6 +32,7 @@ import json
 import logging
 import argparse
 import hashlib
+import random
 
 from dotenv import load_dotenv
 
@@ -72,15 +73,7 @@ def _credentials_set() -> bool:
 # ── Tweet Formatter ───────────────────────────────────────────────────────────
 def format_tweet(payload: dict) -> str:
     """
-    Build a tweet string (≤280 chars) from a WhaleAlertPayload.
-
-    Format:
-        🐋 $127,000 YES on "Will the Fed cut rates in June?"
-        📊 72% probability · Polymarket
-
-        Live whale tracking → polyvision.app
-
-        #PredictionMarkets #Polymarket
+    Build a dynamic, human-sounding tweet string (≤280 chars) from a WhaleAlertPayload.
     """
     usd_value   = float(payload.get("usd_value", 0))
     outcome     = payload.get("outcome", "YES")
@@ -102,25 +95,39 @@ def format_tweet(payload: dict) -> str:
 
     # Price as percentage
     pct = f"{price:.0%}"
+    
+    # Format dollars nicely
+    usd_str = f"${usd_value:,.0f}"
 
-    # Truncate market title to keep tweet under 280 chars
-    # Base tweet without market title = ~130 chars, leaving ~130 for title
-    max_title = 100
-    if len(market) > max_title:
-        market = market[:max_title - 1] + "…"
+    templates = [
+        "A trader just made a {usd} bet on {outcome} for '{market}' at {pct} to win on {platform}! What do they know that we don't? Want to get notified whenever a whale enters the market? Try out PolyVision, and follow the money! {emoji}👇\n\npolyvision.app\n\n{hashtags}",
+        "🚨 Whale Alert: Someone just dropped {usd} on {outcome} for '{market}' ({pct} probability) via {platform}. Are they hedging or do they have inside info? Catch moves like this in real-time with PolyVision before the market reacts ⚡️\n\npolyvision.app\n\n{hashtags}",
+        "Millions are moving on {platform}... A {usd} position was just taken on '{market}' ({outcome} @ {pct}). Don't trade blind—see exactly what the smart money is doing. Track every whale live on PolyVision 🎯\n\npolyvision.app\n\n{hashtags}",
+        "Just in: massive {usd} play on '{market}' betting {outcome} ({pct}). Is smart money leading the charge? Don't miss the next big shift on {platform}. Follow the whales and trade smarter with PolyVision. 🌊\n\npolyvision.app\n\n{hashtags}",
+        "🔥 Huge move on {platform}! A whale just bet {usd} that {outcome} happens for '{market}', buying in at {pct}. Want to know the second these trades happen? PolyVision gets you real-time alerts so you're never late.\n\npolyvision.app\n\n{hashtags}"
+    ]
 
-    tweet = (
-        f"{emoji} ${usd_value:,.0f} {outcome} on \"{market}\"\n"
-        f"📊 {pct} probability · {platform}\n"
-        f"\n"
-        f"Live whale tracking → polyvision.app\n"
-        f"\n"
-        f"{hashtags}"
+    template = random.choice(templates)
+    
+    # Calculate how much space the template uses WITHOUT the market title
+    template_blank = template.format(
+        usd=usd_str, outcome=outcome, market="", pct=pct, 
+        platform=platform, emoji=emoji, hashtags=hashtags
     )
+    
+    # Twitter hard limit is 280
+    chars_left = 280 - len(template_blank)
+    
+    # Truncate market if necessary
+    if len(market) > chars_left:
+        safe_market = market[:max(0, chars_left - 1)] + "…"
+    else:
+        safe_market = market
 
-    # Final safety truncation (Twitter hard limit is 280)
-    if len(tweet) > 280:
-        tweet = tweet[:277] + "…"
+    tweet = template.format(
+        usd=usd_str, outcome=outcome, market=safe_market, pct=pct, 
+        platform=platform, emoji=emoji, hashtags=hashtags
+    )
 
     return tweet
 
