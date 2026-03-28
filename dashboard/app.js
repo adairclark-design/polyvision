@@ -578,6 +578,7 @@ async function _processWinRateQueue() {
           if (ev.whale?.wallet === wallet) {
             if (wrDecimal !== null) ev.whale.winRate = wrDecimal;
             if (allTimePnl !== null) ev.whale.roi30d = allTimePnl; // repurpose roi30d for all-time P&L
+            if (profile.handle) ev.whale.handle = profile.handle; // use real Polymarket username
           }
         });
 
