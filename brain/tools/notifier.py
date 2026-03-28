@@ -2,7 +2,7 @@
 """
 notifier.py — PolyVision Layer 3 Tool
 Routes a finalized WhaleAlertPayload to push notifications (OneSignal),
-Discord webhook embed, and Telegram bot message.
+Discord webhook embed, Telegram bot message, and Twitter/X post.
 
 Architecture SOP: architecture/05_notification_delivery.md
 Usage:
@@ -62,6 +62,14 @@ DISCORD_TIERS = DISCORD_POLY_TIERS
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 REDIS_URL          = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+# ── Twitter/X auto-posting ────────────────────────────────────────────────────
+try:
+    from twitter_poster import maybe_tweet as _maybe_tweet
+    TWITTER_ENABLED = True
+except ImportError:
+    TWITTER_ENABLED = False
+    _maybe_tweet = None
 
 RATE_LIMIT_WHALE_TTL    = 300   # 5 minutes: one WHALE alert per market
 RATE_LIMIT_STANDARD_MAX = 10    # max STANDARD alerts per hour
@@ -370,6 +378,8 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
                 print(f"\n── 🎮 Discord ({label}): SKIPPED (${usd_value:,.0f} < ${thr:,.0f})")
         print("\n── 📨 Telegram Message ────────────────────────────")
         print(tg_text if qualifying_tiers else "SKIPPED")
+        if TWITTER_ENABLED:
+            _maybe_tweet(payload, dry_run=True)
         return {"status": "dry_run", "channels": {}}
 
     results = {
@@ -391,6 +401,19 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
         results["telegram"] = send_with_retry("Telegram", lambda: send_telegram(tg_text))
     else:
         results["telegram"] = "skipped_min_size"
+
+    # ── Twitter/X auto-post ────────────────────────────────────────────────────
+    if TWITTER_ENABLED:
+        try:
+            tw_result = _maybe_tweet(payload, dry_run=False)
+            results["twitter"] = tw_result.get("status", "unknown")
+            if tw_result.get("tweet_id"):
+                log.info(f"[Twitter] Posted tweet ID {tw_result['tweet_id']}")
+        except Exception as e:
+            log.error(f"[Twitter] Post error: {e}")
+            results["twitter"] = "failed"
+    else:
+        results["twitter"] = "skipped_no_module"
 
     return {"status": "delivered", "channels": results}
 
