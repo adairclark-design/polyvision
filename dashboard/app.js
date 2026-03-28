@@ -561,7 +561,7 @@ async function _processWinRateQueue() {
           const wr = Math.round(wins / closed.length * 100);
           const badge = document.getElementById(`wr-${cardId}`);
           if (badge) {
-            badge.textContent = `${wr}%`;
+            badge.textContent = `${wr}% (${closed.length})`;
             badge.className = `value ${wr >= 75 ? 'positive' : 'neutral'}`;
           }
         }
