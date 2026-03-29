@@ -320,41 +320,58 @@ async def run_pipeline(event_dict: dict):
         if not alert:
             return   # filtered out by threshold
 
-        # 1a. Win Rate + Real Handle Pre-Fetch (Polymarket only)
-        #     Kalshi trades use a different identity system — skip xray entirely.
-        wallet       = event_dict.get('maker_address', '')
+        # 1a. Real Trader Handle — three-tier resolution (Polymarket only)
+        #     Tier 1: trader_pseudonym / trader_name already fetched by The Ear
+        #             from the Polymarket REST API at ingest time (most reliable).
+        #     Tier 2: xray profile name (fetched on-demand, Redis-cached 60s).
+        #     Tier 3: synthetic hash handle (already set by signal_engine above).
+        #     Kalshi trades use a different identity system — skip entirely.
+        wallet        = event_dict.get('maker_address', '')
         is_polymarket = event_dict.get('source', 'POLYMARKET').upper() == 'POLYMARKET'
-        if is_polymarket and wallet and alert.get('wallet_win_rate') is None:
-            try:
-                xray_profile = await asyncio.get_event_loop().run_in_executor(
-                    None, get_wallet_xray, wallet
-                )
-                # Patch win rate
-                positions = xray_profile.get('positions', [])
-                closed    = [p for p in positions if not p.get('is_open', True)]
-                if closed:
-                    wins        = sum(1 for p in closed if (p.get('net_pnl') or 0) > 0)
-                    fetched_wr  = round(wins / len(closed), 4)
-                    alert['wallet_win_rate']      = fetched_wr
-                    alert['copy_trade_recommended'] = fetched_wr >= float(
-                        os.getenv('COPY_TRADE_MIN_WIN_RATE', '0.60')
+
+        if is_polymarket:
+            # Tier 1 — event already contains the Polymarket public name
+            ear_name = (
+                event_dict.get('trader_name', '').strip()
+                or event_dict.get('trader_pseudonym', '').strip()
+            )
+            if ear_name:
+                old_handle = alert.get('trader_handle', '')
+                alert['trader_handle'] = ear_name
+                log.info(f"🏷  Handle (Ear): '{old_handle}' → '{ear_name}'")
+
+            # Tier 2 — xray enrichment (win rate + name if Tier 1 was empty)
+            if wallet and alert.get('wallet_win_rate') is None:
+                try:
+                    xray_profile = await asyncio.get_event_loop().run_in_executor(
+                        None, get_wallet_xray, wallet
                     )
-                    log.info(f"🎯 Win rate for {wallet[:10]}…: {fetched_wr:.1%}")
+                    # Win rate
+                    positions = xray_profile.get('positions', [])
+                    closed    = [p for p in positions if not p.get('is_open', True)]
+                    if closed:
+                        wins       = sum(1 for p in closed if (p.get('net_pnl') or 0) > 0)
+                        fetched_wr = round(wins / len(closed), 4)
+                        alert['wallet_win_rate']        = fetched_wr
+                        alert['copy_trade_recommended'] = fetched_wr >= float(
+                            os.getenv('COPY_TRADE_MIN_WIN_RATE', '0.60')
+                        )
+                        log.info(f"🎯 Win rate for {wallet[:10]}…: {fetched_wr:.1%}")
 
-                # Patch real Polymarket username — replaces synthetic handle so
-                # tweets, Discord embeds, and card images all show the verified name.
-                real_name = (
-                    xray_profile.get('name')
-                    or xray_profile.get('username')
-                    or xray_profile.get('pseudonym')
-                )
-                if real_name and real_name.strip():
-                    old_handle = alert.get('trader_handle', '')
-                    alert['trader_handle'] = real_name.strip()
-                    log.info(f"🏷  Handle patched: '{old_handle}' → '{real_name.strip()}'")
+                    # Name — only patch if Tier 1 was empty
+                    if not ear_name:
+                        xray_name = (
+                            xray_profile.get('name', '').strip()
+                            or xray_profile.get('username', '').strip()
+                            or xray_profile.get('pseudonym', '').strip()
+                        )
+                        if xray_name:
+                            old_handle = alert.get('trader_handle', '')
+                            alert['trader_handle'] = xray_name
+                            log.info(f"🏷  Handle (xray): '{old_handle}' → '{xray_name}'")
 
-            except Exception as _xray_err:
-                log.debug(f"xray prefetch skipped for {wallet[:10]}…: {_xray_err}")
+                except Exception as _xray_err:
+                    log.debug(f"xray enrichment skipped for {wallet[:10]}…: {_xray_err}")
 
 
         # 1b. Cluster Detection — check if 3+ whales on same side within 15 min
