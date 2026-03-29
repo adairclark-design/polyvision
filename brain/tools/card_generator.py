@@ -241,8 +241,8 @@ def generate_card(payload: dict) -> io.BytesIO:
         glow_col = None
 
     f_hero = _font(hero_sz, bold=True)
-    f_outcome = _font(64, bold=True)
-    f_pct = _font(48, bold=False)
+    f_outcome = _font(52, bold=True)  # Reduced from 64 to prevent line bleed
+    f_pct = _font(40, bold=False)     # Reduced from 48
     
     # Laying out the text blocks horizontally in a row centered in right pane
     out_w = draw.textlength(outcome, font=f_outcome)
@@ -263,23 +263,27 @@ def generate_card(payload: dict) -> io.BytesIO:
         draw.text((hx, hy), usd_str, font=f_hero, fill=hero_fill)
         
     # Second Row: [ICON] OUTCOME  @ PCT
-    # Let's group them together so they center nicely as one block
-    icon_sz = 35
+    icon_sz = 30  # Reduced slightly
     gap = 20
-    row2_total_w = icon_sz + gap + out_w + 30 + pct_w
+    row2_total_w = icon_sz + gap + out_w + 20 + pct_w
     row2_x = RIGHT_X + (RIGHT_W - row2_total_w) // 2
+    
+    # Force boundary protection so we NEVER bleed past the center line
+    if row2_x < RIGHT_X + 24:
+        row2_x = RIGHT_X + 24
+        
     row2_y = hy + hero_sz + 40
     
     # 1. Icon (vertically centered against outcome text)
-    _draw_outcome_icon(draw, cx=row2_x + icon_sz//2, cy=row2_y + 35, size=icon_sz, outcome=outcome, color=(*accent, 255))
+    _draw_outcome_icon(draw, cx=row2_x + icon_sz//2, cy=row2_y + 30, size=icon_sz, outcome=outcome, color=(*accent, 255))
     
     # 2. Outcome text
     out_txt_x = row2_x + icon_sz + gap
     draw.text((out_txt_x, row2_y), outcome, font=f_outcome, fill=(*accent, 255))
     
     # 3. Pct
-    pct_txt_x = out_txt_x + out_w + 30
-    # adjust Y downward slightly so it baselines with outcome text
+    pct_txt_x = out_txt_x + out_w + 20
+    # adjust Y downward slightly so it baselines
     draw.text((pct_txt_x, row2_y + 12), pct_str, font=f_pct, fill=MUTED)
     
     # Footer Right
