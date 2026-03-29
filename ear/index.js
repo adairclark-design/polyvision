@@ -84,6 +84,9 @@ function normalizeTrade(raw) {
         taker_address: raw.taker || raw.takerAddress || '',
         side: (raw.side || 'BUY').toUpperCase(),
         timestamp: ts,
+        // Trader identity — present in Polymarket RTDS and Data API
+        trader_pseudonym: raw.pseudonym || raw.trader_pseudonym || '',
+        trader_name:      raw.name      || raw.trader_name      || '',
     };
 }
 

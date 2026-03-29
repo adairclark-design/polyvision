@@ -175,7 +175,12 @@ def generate_card(payload: dict) -> io.BytesIO:
     
     # Win Rate Badge
     wy = hy + 64
-    if win_rate is not None:
+    f_wr = _font(20, bold=True)
+    # Win rate display logic:
+    # - None → TBD (xray returned no data at all)
+    # - 0.0  → TBD (no closed positions found, not a real 0% win rate)
+    # - >0   → show actual % with color coding
+    if win_rate is not None and win_rate > 0.0:
         wr_str = f"Win Rate: {win_rate:.0%}"
         if win_rate >= 0.55:
             bg_color = (*MINT, 255); text_color = (0, 0, 0, 255)
@@ -187,7 +192,6 @@ def generate_card(payload: dict) -> io.BytesIO:
         wr_str = "Win Rate: TBD"
         bg_color = (*DIM, 255); text_color = WHITE
         
-    f_wr = _font(20, bold=True)
     wr_w = draw.textlength(wr_str, font=f_wr) + 24
     draw.rounded_rectangle([LEFT_X, wy, LEFT_X + wr_w, wy + 32], radius=16, fill=bg_color)
     draw.text((LEFT_X + 12, wy + 4), wr_str, font=f_wr, fill=text_color)
@@ -263,28 +267,48 @@ def generate_card(payload: dict) -> io.BytesIO:
         draw.text((hx, hy), usd_str, font=f_hero, fill=hero_fill)
         
     # Second Row: [ICON] OUTCOME  @ PCT
-    icon_sz = 30  # Reduced slightly
-    gap = 20
+    icon_sz = 30
+    gap = 16
+    RIGHT_EDGE = W - PAD - 40  # hard right wall
+
+    # Calculate max width available for the outcome text label
+    MAX_OUT_W = RIGHT_EDGE - RIGHT_X - icon_sz - gap - 24  # 24px right padding
+    safe_outcome = outcome
+    while draw.textlength(safe_outcome, font=f_outcome) > MAX_OUT_W and len(safe_outcome) > 1:
+        safe_outcome = safe_outcome[:-1]
+    if safe_outcome != outcome:
+        while safe_outcome and draw.textlength(safe_outcome + "…", font=f_outcome) > MAX_OUT_W:
+            safe_outcome = safe_outcome[:-1]
+        safe_outcome += "…"
+
+    out_w = draw.textlength(safe_outcome, font=f_outcome)
+    pct_w = draw.textlength(pct_str, font=f_pct)
+
+    # Determine if we have room for the pct label too
     row2_total_w = icon_sz + gap + out_w + 20 + pct_w
+    show_pct = (RIGHT_X + row2_total_w + 24) <= RIGHT_EDGE
+    if not show_pct:
+        row2_total_w = icon_sz + gap + out_w
+
     row2_x = RIGHT_X + (RIGHT_W - row2_total_w) // 2
     
-    # Force boundary protection so we NEVER bleed past the center line
+    # Force left boundary: never bleed over the center line
     if row2_x < RIGHT_X + 24:
         row2_x = RIGHT_X + 24
         
     row2_y = hy + hero_sz + 40
     
-    # 1. Icon (vertically centered against outcome text)
+    # 1. Icon
     _draw_outcome_icon(draw, cx=row2_x + icon_sz//2, cy=row2_y + 30, size=icon_sz, outcome=outcome, color=(*accent, 255))
     
-    # 2. Outcome text
+    # 2. Outcome text (safe, truncated)
     out_txt_x = row2_x + icon_sz + gap
-    draw.text((out_txt_x, row2_y), outcome, font=f_outcome, fill=(*accent, 255))
+    draw.text((out_txt_x, row2_y), safe_outcome, font=f_outcome, fill=(*accent, 255))
     
-    # 3. Pct
-    pct_txt_x = out_txt_x + out_w + 20
-    # adjust Y downward slightly so it baselines
-    draw.text((pct_txt_x, row2_y + 12), pct_str, font=f_pct, fill=MUTED)
+    # 3. Pct (only if it fits)
+    if show_pct:
+        pct_txt_x = out_txt_x + out_w + 20
+        draw.text((pct_txt_x, row2_y + 12), pct_str, font=f_pct, fill=MUTED)
     
     # Footer Right
     tagline = "polyvision.app"
