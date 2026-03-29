@@ -3,283 +3,337 @@
 card_generator.py — PolyVision Layer 3 Tool
 
 Generates a branded 1200×675 PNG trade card for attachment to X (Twitter) posts.
-Uses Pillow (PIL) only — no external services, no temp files, works headlessly on Railway.
+Uses Pillow (PIL) only — no external services, works headlessly on Railway.
 
-Font strategy: loads bundled NotoSans TTF from brain/assets/fonts/ first,
-then falls back to system fonts. This guarantees readable text on Railway.
-
-Usage:
-    from tools.card_generator import generate_card
-    png_bytes = generate_card(payload)   # returns BytesIO
-
-Self-annealing log:
-    2026-03-29: v1 — Initial implementation. Pure Pillow, system font fallback.
-    2026-03-29: v2 — Bundle NotoSans TTF to fix Railway font fallback rendering
-                     tiny 10px bitmap text. Redesigned layout: hero stat row
-                     centered on canvas, larger all text, better visual density.
+v3: "Receipt" styling. Left pane context, Right pane numbers. Geometric
+outcome icons (avoiding linux emoji bugs), win-rate pill badge, grid texture,
+and layered "Glow" effects for $250k+ Whale and $1M+ Mega Whale trades.
 """
 
 import io
 import os
 import logging
 import textwrap
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 log = logging.getLogger(__name__)
 
 # ── Brand Colours ─────────────────────────────────────────────────────────────
 BG_DARK   = (10,  13,  18)    # deep navy black
 BG_CARD   = (18,  23,  32)    # card surface
+BG_RECEIPT= (24,  30,  42)    # right pane surface
 BG_BADGE  = (30,  40,  56)    # badge background
-MINT      = (0,   230, 150)   # YES accent — slightly warmer green
+MINT      = (0,   230, 150)   # YES accent
 ROSE      = (255, 70,  100)   # NO accent
-AMBER     = (245, 166, 35)    # neutral/large
+AMBER     = (245, 166, 35)    # neutral
+GOLD      = (255, 215, 0)     # Mega Whale
 WHITE     = (235, 242, 250)   # primary text
 MUTED     = (120, 135, 150)   # secondary text
-DIM       = (60,  72,  86)    # very muted / separator
+DIM       = (60,  72,  86)    # separators
 
 W, H = 1200, 675
 
-# ── Bundled font paths ─────────────────────────────────────────────────────────
+# ── Fonts ─────────────────────────────────────────────────────────────────────
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _FONT_DIR = os.path.join(_HERE, "..", "assets", "fonts")
-
 BUNDLED_BOLD    = os.path.join(_FONT_DIR, "NotoSans-Bold.ttf")
 BUNDLED_REGULAR = os.path.join(_FONT_DIR, "NotoSans-Regular.ttf")
 
-# System font fallback candidates (Linux Railway + macOS)
-_SYS_BOLD = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-    "/System/Library/Fonts/Helvetica.ttc",
-    "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-]
-_SYS_REGULAR = [
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-    "/System/Library/Fonts/Helvetica.ttc",
-    "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-]
-
+_SYS_BOLD = ["/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", "/System/Library/Fonts/Helvetica.ttc"]
+_SYS_REGULAR = ["/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", "/System/Library/Fonts/Helvetica.ttc"]
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    """Load font at given size. Tries bundled font first, then system, then default."""
-    primary = BUNDLED_BOLD if bold else BUNDLED_REGULAR
-    candidates = [primary] + (_SYS_BOLD if bold else _SYS_REGULAR)
+    candidates = [BUNDLED_BOLD if bold else BUNDLED_REGULAR] + (_SYS_BOLD if bold else _SYS_REGULAR)
     for path in candidates:
         try:
             return ImageFont.truetype(path, size)
         except (IOError, OSError):
             continue
-    log.warning(f"[CardGen] No TTF font found — falling back to bitmap default (text will be tiny). "
-                f"Ensure brain/assets/fonts/NotoSans-Bold.ttf exists in the repo.")
     return ImageFont.load_default()
 
-
 def _truncate(text: str, font, draw: ImageDraw.Draw, max_width: int) -> str:
-    """Truncate text with ellipsis to fit within max_width pixels."""
-    if draw.textlength(text, font=font) <= max_width:
-        return text
-    while text and draw.textlength(text + "…", font=font) > max_width:
-        text = text[:-1]
+    if draw.textlength(text, font=font) <= max_width: return text
+    while text and draw.textlength(text + "…", font=font) > max_width: text = text[:-1]
     return text + "…"
 
-
 def _fmt_usd(value: float) -> str:
-    """Format large dollar amounts: $69,589 → $69.6K, $1,200,000 → $1.2M"""
-    if value >= 1_000_000:
-        return f"${value / 1_000_000:.1f}M"
-    if value >= 1_000:
-        return f"${value / 1_000:.1f}K"
+    if value >= 1_000_000: return f"${value / 1_000_000:.1f}M"
+    if value >= 1_000: return f"${value / 1_000:.1f}K"
     return f"${value:,.0f}"
 
+# ── Visual Helpers ────────────────────────────────────────────────────────────
 
-def _draw_gradient(draw: ImageDraw.Draw, accent_rgb: tuple):
-    """Draw a subtle radial-ish gradient glow from bottom-right corner."""
-    r, g, b = accent_rgb
-    # bottom-right warm glow
-    for i in range(220):
-        alpha = int(28 * (1 - i / 220))
-        y_start = H - i * 3
-        if y_start < 0:
-            y_start = 0
-        draw.rectangle(
-            [(W - i * 6, y_start), (W, H)],
-            fill=(r, g, b, alpha),
-        )
-    # very faint top-left opposite glow
-    for i in range(80):
-        alpha = int(10 * (1 - i / 80))
-        draw.rectangle([(0, 0), (i * 8, i * 5)], fill=(r, g, b, alpha))
+def _draw_grid_texture(draw: ImageDraw.Draw, w: int, h: int, color: tuple):
+    """Draws a faint graph paper grid across the image."""
+    step = 30
+    for x in range(0, w, step):
+        draw.line([(x, 0), (x, h)], fill=(*color, 8), width=1)
+    for y in range(0, h, step):
+        draw.line([(0, y), (w, y)], fill=(*color, 8), width=1)
+
+def _draw_glow_text(base_img, draw, x, y, text, font, fill_color, glow_color, radius=12, intensity=2):
+    """Draws text with a blurred drop-shadow/glow effect using composition."""
+    # Create temp transparent canvas
+    txt_layer = Image.new("RGBA", base_img.size, (0, 0, 0, 0))
+    txt_draw = ImageDraw.Draw(txt_layer)
+    txt_draw.text((x, y), text, font=font, fill=glow_color)
+    
+    # Blur to create glow
+    blurred = txt_layer.filter(ImageFilter.GaussianBlur(radius=radius))
+    
+    # Composite multiple times to increase core brightness of the glow
+    for _ in range(intensity):
+        base_img.alpha_composite(blurred)
+        
+    # Finally, draw sharp text over the glow
+    draw.text((x, y), text, font=font, fill=fill_color)
+
+def _draw_outcome_icon(draw: ImageDraw.Draw, cx: int, cy: int, size: int, outcome: str, color: tuple):
+    """Draws a geometric arrow/chevron centered at (cx, cy)."""
+    r = size / 2.0
+    if outcome == "NO":
+        # Downward solid triangle
+        pts = [(cx - r, cy - r*0.5), (cx + r, cy - r*0.5), (cx, cy + r*0.7)]
+        draw.polygon(pts, fill=color)
+    else:
+        # Upward solid triangle
+        pts = [(cx - r, cy + r*0.5), (cx + r, cy + r*0.5), (cx, cy - r*0.7)]
+        draw.polygon(pts, fill=color)
 
 
+# ── Main Generator ────────────────────────────────────────────────────────────
 def generate_card(payload: dict) -> io.BytesIO:
-    """
-    Generate a branded PolyVision trade card image.
-    Returns a BytesIO PNG buffer, ready for tweepy media_upload.
-    """
-    # ── Extract fields ────────────────────────────────────────────────────────
+    # ── Parsing ───────────────────────────────────────────────────────────────
     handle    = payload.get("trader_handle") or payload.get("handle") or "Anonymous"
     market    = payload.get("market_title", "Unknown Market")
     outcome   = str(payload.get("outcome", "YES")).upper()
     price     = float(payload.get("price", 0.5))
     usd_value = float(payload.get("usd_value", 0))
     source    = str(payload.get("source", "POLYMARKET")).upper()
-    tier      = str(payload.get("alert_tier", "STANDARD")).upper()
     win_rate  = payload.get("wallet_win_rate")
 
-    platform   = "Kalshi" if source == "KALSHI" else "Polymarket"
-    accent     = MINT if outcome in ("YES", "CANUCKS", "OILERS", "MAVS") or (
-        outcome not in ("NO",) and outcome == outcome.upper() and outcome != "NO"
-    ) else ROSE
-    # Simpler: YES/NO binary; anything not "NO" treated as affirmative
-    accent     = ROSE if outcome == "NO" else MINT
-
-    is_whale   = tier == "WHALE" or usd_value >= 50_000
-    tier_label = "🐋  WHALE" if is_whale else "🔵  STANDARD"
-    pct_str    = f"@ {price:.0%}"
+    platform  = "Kalshi" if source == "KALSHI" else "Polymarket"
+    accent    = ROSE if outcome == "NO" else MINT
+    
+    is_mega   = usd_value >= 1_000_000
+    is_whale  = usd_value >= 50_000 or payload.get("alert_tier", "STANDARD") == "WHALE"
+    is_super  = usd_value >= 250_000
+    
+    tier_label = "👑  MEGA WHALE" if is_mega else ("🐋  WHALE" if is_whale else "🔵  STANDARD")
     usd_str    = _fmt_usd(usd_value)
-    wr_str     = f"{win_rate:.0%} win rate" if win_rate else "Win Rate: TBD"
+    pct_str    = f"@ {price:.0%}"
 
-    # ── Canvas ────────────────────────────────────────────────────────────────
-    img  = Image.new("RGB", (W, H), BG_DARK)
+    # ── Canvas setup ──────────────────────────────────────────────────────────
+    img  = Image.new("RGBA", (W, H), (*BG_DARK, 255))
     draw = ImageDraw.Draw(img, "RGBA")
 
-    # Background gradient
-    _draw_gradient(draw, accent)
+    # 1. Background Grid & Glow Texture
+    _draw_grid_texture(draw, W, H, accent)
+    
+    # Soft radial gradient bounding from the bottom-right
+    r, g, b = accent if not is_mega else GOLD
+    for i in range(150):
+        a = int(12 * (1 - i / 150))
+        draw.rectangle([(W - i*5, H - i*3), (W, H)], fill=(r, g, b, a))
 
-    # ── Card frame ────────────────────────────────────────────────────────────
+    # ── Container Frames ──────────────────────────────────────────────────────
     PAD = 40
-    draw.rounded_rectangle(
-        [PAD, PAD, W - PAD, H - PAD],
-        radius=22,
-        fill=BG_CARD,
-        outline=(*accent, 55),
-        width=2,
-    )
+    # Base unified card outline
+    draw.rounded_rectangle([PAD, PAD, W-PAD, H-PAD], radius=24, fill=(*BG_CARD, 255))
+    
+    # Left vs Right Pane Definitions
+    LEFT_X = PAD + 40
+    LEFT_W = 460
+    RIGHT_X = LEFT_X + LEFT_W + 40
+    RIGHT_W = (W - PAD - 40) - RIGHT_X
+    
+    # The "Receipt" Pane Background (Right)
+    pane_rect = [RIGHT_X, PAD + 2, W - PAD - 2, H - PAD - 2]
+    # We'll use a slightly lighter, distinct box to hold the critical data
+    # (sharp on left edge, rounded on right edge to match outer box)
+    # Pillow allows separate corners in later versions, but to be safe:
+    draw.rounded_rectangle([RIGHT_X, PAD + 2, W - PAD - 2, H - PAD - 2], radius=22, fill=(*BG_RECEIPT, 255))
+    draw.rectangle([RIGHT_X, PAD + 2, RIGHT_X + 22, H - PAD - 2], fill=(*BG_RECEIPT, 255)) # Square off left edge
+    draw.line([(RIGHT_X, PAD + 2), (RIGHT_X, H - PAD - 2)], fill=(*DIM, 255), width=2)     # Vertical divider
+    
+    # Outer stroke (drawn over the pane)
+    draw.rounded_rectangle([PAD, PAD, W-PAD, H-PAD], radius=24, outline=(*accent, 60), width=2)
 
-    # ── Fonts ─────────────────────────────────────────────────────────────────
+    # ── Left Pane: Identity & Context ─────────────────────────────────────────
     f_logo    = _font(28, bold=True)
-    f_badge   = _font(20, bold=True)
-    f_handle  = _font(52, bold=True)    # trader name — BIG
-    f_winrate = _font(22, bold=False)
-    f_market  = _font(30, bold=False)   # market name — medium
-    f_hero    = _font(90, bold=True)    # $71.K — HERO size
-    f_outcome = _font(64, bold=True)    # YES / NO
-    f_pct     = _font(46, bold=False)   # @ 41%
-    f_footer  = _font(19, bold=False)
-
-    INNER_L = PAD + 44
-    INNER_R = W - PAD - 44
-
-    # ── PolyVision logo — top left ────────────────────────────────────────────
-    logo_y = PAD + 30
-    draw.text((INNER_L, logo_y), "⬥ PolyVision", font=f_logo, fill=MINT)
-
-    # ── Tier badge — top right ────────────────────────────────────────────────
-    badge_bbox  = draw.textbbox((0, 0), tier_label, font=f_badge)
-    badge_w     = badge_bbox[2] - badge_bbox[0] + 32
-    badge_h     = badge_bbox[3] - badge_bbox[1] + 16
-    badge_x     = INNER_R - badge_w
-    badge_y     = logo_y - 2
-    draw.rounded_rectangle(
-        [badge_x, badge_y, badge_x + badge_w, badge_y + badge_h],
-        radius=10,
-        fill=BG_BADGE,
-        outline=(*accent, 80),
-        width=1,
-    )
-    draw.text((badge_x + 16, badge_y + 8), tier_label, font=f_badge, fill=WHITE)
-
-    # ── Thin separator ────────────────────────────────────────────────────────
-    sep_y = logo_y + 52
-    draw.line([(INNER_L, sep_y), (INNER_R, sep_y)], fill=(*accent, 35), width=1)
-
-    # ── Trader handle ─────────────────────────────────────────────────────────
-    handle_y = sep_y + 30
-    safe_handle = _truncate(handle, f_handle, draw, INNER_R - INNER_L)
-    draw.text((INNER_L, handle_y), safe_handle, font=f_handle, fill=WHITE)
-
-    # Win rate — inline right of handle, vertically centred
-    wr_x = INNER_L + draw.textlength(safe_handle, font=f_handle) + 20
-    wr_y = handle_y + (52 - 22) // 2 + 4   # vertically centre against f_handle
-    draw.text((wr_x, wr_y), wr_str, font=f_winrate, fill=MUTED)
-
-    # ── Market title ──────────────────────────────────────────────────────────
-    market_y = handle_y + 68
-    # Wrap across max 2 lines; truncate each line if too wide
-    wrapped = textwrap.wrap(market, width=52)[:2]
+    f_handle  = _font(48, bold=True)
+    f_market  = _font(32, bold=False)
+    f_footer  = _font(22, bold=False)
+    
+    # Logo
+    draw.text((LEFT_X, PAD + 40), "⬥ PolyVision", font=f_logo, fill=MINT)
+    
+    # Trader Handle
+    hy = PAD + 180
+    safe_handle = _truncate(handle, f_handle, draw, LEFT_W)
+    draw.text((LEFT_X, hy), safe_handle, font=f_handle, fill=WHITE)
+    
+    # Win Rate Badge
+    wy = hy + 64
+    if win_rate is not None:
+        wr_str = f"Win Rate: {win_rate:.0%}"
+        if win_rate >= 0.55:
+            bg_color = (*MINT, 255); text_color = (0, 0, 0, 255)
+        elif win_rate <= 0.45:
+            bg_color = (*ROSE, 255); text_color = WHITE
+        else:
+            bg_color = (*MUTED, 255); text_color = WHITE
+    else:
+        wr_str = "Win Rate: TBD"
+        bg_color = (*DIM, 255); text_color = WHITE
+        
+    f_wr = _font(20, bold=True)
+    wr_w = draw.textlength(wr_str, font=f_wr) + 24
+    draw.rounded_rectangle([LEFT_X, wy, LEFT_X + wr_w, wy + 32], radius=16, fill=bg_color)
+    draw.text((LEFT_X + 12, wy + 4), wr_str, font=f_wr, fill=text_color)
+    
+    # Market Title
+    my = wy + 60
+    wrapped = textwrap.wrap(market, width=32)[:3]
     for i, line in enumerate(wrapped):
-        safe = _truncate(line, f_market, draw, INNER_R - INNER_L)
-        draw.text((INNER_L, market_y + i * 40), safe, font=f_market, fill=MUTED)
+        draw.text((LEFT_X, my + i*44), line, font=f_market, fill=MUTED)
+        
+    # Footer Left
+    draw.text((LEFT_X, H - PAD - 60), platform, font=f_footer, fill=MUTED)
 
-    # ── HERO stats row — SIZE  OUTCOME  @PCT ─────────────────────────────────
-    # Positioned to fill the bottom-centre zone prominently
-    hero_y = market_y + (len(wrapped) * 40) + 38
 
-    # Dollar amount (huge)
-    draw.text((INNER_L, hero_y), usd_str, font=f_hero, fill=accent)
-    hero_usd_w = draw.textlength(usd_str, font=f_hero)
+    # ── Right Pane: The Trade Slip (Magnitude Logic) ──────────────────────────
+    
+    # Tier Badge (Top Right)
+    f_badge = _font(22, bold=True)
+    badge_w = draw.textlength(tier_label, font=f_badge) + 32
+    badge_x = W - PAD - 40 - badge_w
+    badge_y = PAD + 40
+    badge_color = (*GOLD, 255) if is_mega else (*accent, 255)
+    
+    # Only draw full fill badge for mega whales, outline otherwise
+    if is_mega:
+        draw.rounded_rectangle([badge_x, badge_y, badge_x + badge_w, badge_y + 40], radius=12, fill=badge_color)
+        draw.text((badge_x + 16, badge_y + 8), tier_label, font=f_badge, fill=(0,0,0,255))
+    else:
+        draw.rounded_rectangle([badge_x, badge_y, badge_x + badge_w, badge_y + 40], radius=12, fill=(*BG_BADGE, 255), outline=badge_color, width=2)
+        draw.text((badge_x + 16, badge_y + 8), tier_label, font=f_badge, fill=WHITE)
 
-    # Outcome label (YES/NO or team name)
-    outcome_x = INNER_L + hero_usd_w + 32
-    # Vertically align with bottom of hero text
-    hero_bbox = draw.textbbox((0, 0), usd_str, font=f_hero)
-    hero_h = hero_bbox[3] - hero_bbox[1]
-    out_bbox = draw.textbbox((0, 0), outcome, font=f_outcome)
-    out_h    = out_bbox[3] - out_bbox[1]
-    outcome_y = hero_y + (hero_h - out_h)        # bottom-align with hero number
-    draw.text((outcome_x, outcome_y), outcome, font=f_outcome, fill=accent)
-    outcome_w = draw.textlength(outcome, font=f_outcome)
 
-    # Percentage (muted, right of outcome)
-    pct_x = outcome_x + outcome_w + 24
-    pct_bbox = draw.textbbox((0, 0), pct_str, font=f_pct)
-    pct_h    = pct_bbox[3] - pct_bbox[1]
-    pct_y    = hero_y + (hero_h - pct_h)         # bottom-align
-    draw.text((pct_x, pct_y), pct_str, font=f_pct, fill=MUTED)
+    # Magnitude sizing for $ Value
+    if is_mega:
+        hero_sz = 140
+        hero_fill = (*GOLD, 255)
+        do_glow = True
+        glow_rad = 20
+        glow_col = (*GOLD, 100)
+    elif is_super:
+        hero_sz = 120
+        hero_fill = (*accent, 255)
+        do_glow = True
+        glow_rad = 15
+        glow_col = (*accent, 120)
+    else:
+        hero_sz = 95
+        hero_fill = (*accent, 255)
+        do_glow = False
+        glow_rad = 0
+        glow_col = None
 
-    # ── Footer line ──────────────────────────────────────────────────────────
-    footer_y = H - PAD - 48
-    draw.line([(INNER_L, footer_y - 14), (INNER_R, footer_y - 14)],
-              fill=(*accent, 30), width=1)
-    draw.text((INNER_L, footer_y), platform, font=f_footer, fill=MUTED)
-    tagline = "Real-time Whale Intelligence  ⬥  polyvision.app"
-    tag_w   = draw.textlength(tagline, font=f_footer)
-    draw.text((INNER_R - tag_w, footer_y), tagline, font=f_footer, fill=MUTED)
+    f_hero = _font(hero_sz, bold=True)
+    f_outcome = _font(64, bold=True)
+    f_pct = _font(48, bold=False)
+    
+    # Laying out the text blocks horizontally in a row centered in right pane
+    out_w = draw.textlength(outcome, font=f_outcome)
+    pct_w = draw.textlength(pct_str, font=f_pct)
+    
+    # We'll stack it:
+    # 1. HUGE Dollar Amount (Top)
+    # 2. [ICON] OUTCOME @ PCT (Bottom)
+    
+    # $ Amount centered inside राइट block horizontally
+    hero_w = draw.textlength(usd_str, font=f_hero)
+    hx = RIGHT_X + (RIGHT_W - hero_w) // 2
+    hy = PAD + 200 # Fixed vertical anchoring
+    
+    if do_glow:
+        _draw_glow_text(img, draw, hx, hy, usd_str, f_hero, hero_fill, glow_col, radius=glow_rad, intensity=3)
+    else:
+        draw.text((hx, hy), usd_str, font=f_hero, fill=hero_fill)
+        
+    # Second Row: [ICON] OUTCOME  @ PCT
+    # Let's group them together so they center nicely as one block
+    icon_sz = 35
+    gap = 20
+    row2_total_w = icon_sz + gap + out_w + 30 + pct_w
+    row2_x = RIGHT_X + (RIGHT_W - row2_total_w) // 2
+    row2_y = hy + hero_sz + 40
+    
+    # 1. Icon (vertically centered against outcome text)
+    _draw_outcome_icon(draw, cx=row2_x + icon_sz//2, cy=row2_y + 35, size=icon_sz, outcome=outcome, color=(*accent, 255))
+    
+    # 2. Outcome text
+    out_txt_x = row2_x + icon_sz + gap
+    draw.text((out_txt_x, row2_y), outcome, font=f_outcome, fill=(*accent, 255))
+    
+    # 3. Pct
+    pct_txt_x = out_txt_x + out_w + 30
+    # adjust Y downward slightly so it baselines with outcome text
+    draw.text((pct_txt_x, row2_y + 12), pct_str, font=f_pct, fill=MUTED)
+    
+    # Footer Right
+    tagline = "polyvision.app"
+    tag_w = draw.textlength(tagline, font=f_footer)
+    draw.text((W - PAD - 40 - tag_w, H - PAD - 60), tagline, font=f_footer, fill=MUTED)
 
     # ── Export ────────────────────────────────────────────────────────────────
+    # Convert RGBA to RGB for standard PNG without transparency issues (just flatten)
+    final_img = Image.new("RGB", img.size, (0, 0, 0))
+    final_img.paste(img, mask=img.split()[3])
+    
     buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=True)
+    final_img.save(buf, format="PNG", optimize=True)
     buf.seek(0)
-    log.info(f"[CardGen] v2 rendered: {handle[:30]} | {market[:40]} | {usd_str} {outcome}")
+    log.info(f"[CardGen] v3 Receipt Card: {handle[:20]} | {usd_str} {outcome}")
     return buf
 
-
-# ── CLI preview ───────────────────────────────────────────────────────────────
+# ── Preview Tests ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    import json, sys
+    import sys, json
     logging.basicConfig(level=logging.INFO)
-
-    sample = {
-        "trader_handle":   "GamblingIsAllYouNeed",
-        "market_title":    "Canucks vs. Flames",
-        "outcome":         "CANUCKS",
-        "price":           0.41,
-        "usd_value":       70_848,
-        "source":          "POLYMARKET",
-        "alert_tier":      "WHALE",
-        "wallet_win_rate": None,
+    os.makedirs(".tmp", exist_ok=True)
+    
+    base_payload = {
+        "trader_handle": "GamblingIsAllYouNeed",
+        "market_title": "Canucks vs. Flames",
+        "outcome": "CANUCKS",
+        "price": 0.41,
+        "usd_value": 70_848,
+        "source": "POLYMARKET",
+        "alert_tier": "WHALE",
+        "wallet_win_rate": 0.61,  # Good win rate
     }
 
-    if len(sys.argv) > 1:
-        sample = json.loads(sys.argv[1])
-
-    buf = generate_card(sample)
-    out_path = ".tmp/card_preview_v2.png"
-    os.makedirs(".tmp", exist_ok=True)
-    with open(out_path, "wb") as f:
-        f.write(buf.read())
-    print(f"✅ Card v2 saved to {out_path}")
+    print("Generating 3 preview variants...")
+    
+    # 1. Standard Whale
+    buf = generate_card(base_payload)
+    with open(".tmp/preview_standard.png", "wb") as f: f.write(buf.read())
+    
+    # 2. Super Whale ($350k - glowing)
+    p2 = base_payload.copy()
+    p2["usd_value"] = 350_000
+    p2["outcome"] = "NO"
+    p2["wallet_win_rate"] = 0.35 # Bad win rate
+    buf2 = generate_card(p2)
+    with open(".tmp/preview_superwhale.png", "wb") as f: f.write(buf2.read())
+    
+    # 3. Mega Whale ($1.2M - gold)
+    p3 = base_payload.copy()
+    p3["usd_value"] = 1_250_000
+    p3["wallet_win_rate"] = None # TBD win rate
+    buf3 = generate_card(p3)
+    with open(".tmp/preview_megawhale.png", "wb") as f: f.write(buf3.read())
+    
+    print("✅ Previews saved in .tmp/")
