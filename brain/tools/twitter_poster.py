@@ -100,11 +100,65 @@ def format_tweet(payload: dict) -> str:
     usd_str = f"${usd_value:,.0f}"
 
     templates = [
-        "A trader just made a {usd} bet on {outcome} for '{market}' at {pct} to win on {platform}! What do they know that we don't? Want to get notified whenever a whale enters the market? Try out PolyVision, and follow the money! {emoji}👇\n\npolyvision.app\n\n{hashtags}",
+        # 1 — Curiosity / "what do they know?" hook
+        "A trader just made a {usd} bet on {outcome} for '{market}' at {pct} to win on {platform}! What do they know that we don't? Want to get notified whenever a whale enters the market? Try out PolyVision and follow the money! {emoji}👇\n\npolyvision.app\n\n{hashtags}",
+
+        # 2 — Breaking alert style
         "🚨 Whale Alert: Someone just dropped {usd} on {outcome} for '{market}' ({pct} probability) via {platform}. Are they hedging or do they have inside info? Catch moves like this in real-time with PolyVision before the market reacts ⚡️\n\npolyvision.app\n\n{hashtags}",
-        "Millions are moving on {platform}... A {usd} position was just taken on '{market}' ({outcome} @ {pct}). Don't trade blind—see exactly what the smart money is doing. Track every whale live on PolyVision 🎯\n\npolyvision.app\n\n{hashtags}",
+
+        # 3 — Smart money / don't trade blind
+        "Millions are moving on {platform}... A {usd} position was just taken on '{market}' ({outcome} @ {pct}). Don't trade blind — see exactly what the smart money is doing. Track every whale live on PolyVision 🎯\n\npolyvision.app\n\n{hashtags}",
+
+        # 4 — Is smart money leading the charge?
         "Just in: massive {usd} play on '{market}' betting {outcome} ({pct}). Is smart money leading the charge? Don't miss the next big shift on {platform}. Follow the whales and trade smarter with PolyVision. 🌊\n\npolyvision.app\n\n{hashtags}",
-        "🔥 Huge move on {platform}! A whale just bet {usd} that {outcome} happens for '{market}', buying in at {pct}. Want to know the second these trades happen? PolyVision gets you real-time alerts so you're never late.\n\npolyvision.app\n\n{hashtags}"
+
+        # 5 — Never be late
+        "🔥 Huge move on {platform}! A whale just bet {usd} that {outcome} happens for '{market}', buying in at {pct}. Want to know the second these trades happen? PolyVision gets you real-time alerts so you're never late.\n\npolyvision.app\n\n{hashtags}",
+
+        # 6 — What would you do?
+        "If someone dropped {usd} on {outcome} for '{market}' at {pct} on {platform}, what would you do — copy the trade, fade it, or just watch? PolyVision shows you every whale move in real-time so you can decide. {emoji}\n\npolyvision.app\n\n{hashtags}",
+
+        # 7 — Storytelling / most people never see it
+        "Picture this: a trader quietly places {usd} on {outcome} for '{market}' at {pct} odds on {platform}. Most people never see it. PolyVision users do. Be one of them. 👀\n\npolyvision.app\n\n{hashtags}",
+
+        # 8 — FOMO / odds shift before you know
+        "The smart money just moved. {usd} on {outcome} for '{market}' ({pct}) via {platform}. By the time most people see this, the odds will have shifted. Don't be last — PolyVision alerts you the moment it happens. ⚡\n\npolyvision.app\n\n{hashtags}",
+
+        # 9 — Analysis / market signal
+        "Market signal: {usd} entered {platform} on {outcome} for '{market}' at {pct}. Whether it's conviction or a hedge, someone powerful thinks they know something. See every move like this with PolyVision. 🔍\n\npolyvision.app\n\n{hashtags}",
+
+        # 10 — Contrarian / smartest or most expensive mistake
+        "Either this trader is the smartest person in the room, or they just made a very expensive mistake. {usd} on {outcome} for '{market}' at {pct} on {platform}. Which is it? Follow the money with PolyVision. 🤔\n\npolyvision.app\n\n{hashtags}",
+
+        # 11 — Conversational / conviction money
+        "Someone just quietly dropped {usd} on {outcome} for '{market}' at {pct} on {platform}. That's not a casual trade — that's conviction money. PolyVision surfaces moves like this before the news does. 🌊\n\npolyvision.app\n\n{hashtags}",
+
+        # 12 — Community / thousands already tracking
+        "The whales are active on {platform}. {usd} just landed on {outcome} for '{market}' ({pct}). Thousands of traders use PolyVision to see exactly where the smart money is going. Are you one of them? {emoji}\n\npolyvision.app\n\n{hashtags}",
+
+        # 13 — Urgency / these don't stay hidden long
+        "Right now, someone just placed {usd} on {outcome} for '{market}' on {platform} at {pct}. These opportunities don't stay hidden for long — get real-time whale alerts before the market moves. ⏰\n\npolyvision.app\n\n{hashtags}",
+
+        # 14 — Sarcastic / oh, nothing major
+        "Oh, nothing major. Just {usd} quietly betting {outcome} for '{market}' at {pct} on {platform}. Totally normal. 😅 Track every \"normal\" move like this live on PolyVision.\n\npolyvision.app\n\n{hashtags}",
+
+        # 15 — Missed it / while you scrolled
+        "While most people scrolled past their feed, a whale dropped {usd} on {outcome} for '{market}' ({pct}) on {platform}. PolyVision users got the alert instantly. Stop missing signals that matter. {emoji}\n\npolyvision.app\n\n{hashtags}",
+
+        # 16 — Why / we don't know their reasoning but we know the move
+        "Why would someone bet {usd} on {outcome} for '{market}' at {pct} on {platform}? We don't know their reasoning — but we know the move. Track every whale trade in real-time with PolyVision. 🔎\n\npolyvision.app\n\n{hashtags}",
+
+        # 17 — Aspirational / seat at the table
+        "This is how fortunes are made on {platform}: {usd} on {outcome} for '{market}' at {pct}. One massive bet, one massive conviction. Want to be in the room when it happens? PolyVision is your seat at the table. {emoji}\n\npolyvision.app\n\n{hashtags}",
+
+        # 18 — PolyVision flagged this / branded
+        "PolyVision just flagged this: {usd} on {outcome} for '{market}' at {pct} via {platform}. {emoji} Our users saw it the moment it happened. Want in on the next one?\n\npolyvision.app\n\n{hashtags}",
+
+        # 19 — Intelligence / this is what market intelligence looks like
+        "This is what market intelligence looks like: {usd} on {outcome} for '{market}' at {pct} on {platform}. Real money, real conviction. PolyVision tracks every move so you never trade in the dark. 📡\n\npolyvision.app\n\n{hashtags}",
+
+        # 20 — Edge / there are two types of traders
+        "There are two types of traders: those who see moves like this coming, and those who find out after. {usd} on {outcome} for '{market}' ({pct}) just hit {platform}. PolyVision puts you in the first group. {emoji}\n\npolyvision.app\n\n{hashtags}",
     ]
 
     template = random.choice(templates)
