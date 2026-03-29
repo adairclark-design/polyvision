@@ -13,3 +13,4 @@ sentry-sdk[fastapi]>=2.0.0
 resend>=0.7.0
 cryptography>=42.0.0
 tweepy>=4.14.0,<5.0.0
+Pillow>=10.0.0

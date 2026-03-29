@@ -150,8 +150,12 @@ def _is_duplicate(market_id: str, source: str) -> bool:
 
 
 # ── Poster ────────────────────────────────────────────────────────────────────
-def post_tweet(tweet_text: str) -> str:
-    """Post a tweet via tweepy v4 API v2. Returns the tweet ID."""
+def post_tweet(tweet_text: str, payload: dict | None = None) -> str:
+    """
+    Post a tweet via tweepy v4 API v2 with an optional generated card image.
+    Media is uploaded via tweepy API v1.1 (the only endpoint that supports media_upload).
+    Returns the tweet ID.
+    """
     try:
         import tweepy
     except ImportError:
@@ -159,13 +163,44 @@ def post_tweet(tweet_text: str) -> str:
             "tweepy is not installed. Run: pip install tweepy>=4.14.0,<5.0.0"
         )
 
+    # ── v1 API (media upload) ──────────────────────────────────────────────────
+    auth = tweepy.OAuth1UserHandler(
+        TWITTER_API_KEY, TWITTER_API_KEY_SECRET,
+        TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET,
+    )
+    api_v1 = tweepy.API(auth)
+
+    # ── v2 Client (create_tweet) ───────────────────────────────────────────────
     client = tweepy.Client(
         consumer_key=TWITTER_API_KEY,
         consumer_secret=TWITTER_API_KEY_SECRET,
         access_token=TWITTER_ACCESS_TOKEN,
         access_token_secret=TWITTER_ACCESS_TOKEN_SECRET,
     )
-    response = client.create_tweet(text=tweet_text)
+
+    # ── Generate and upload card image ─────────────────────────────────────────
+    media_ids = None
+    if payload is not None:
+        try:
+            import sys, os
+            # Allow import from sibling directory (tools/) regardless of cwd
+            tools_dir = os.path.dirname(os.path.abspath(__file__))
+            if tools_dir not in sys.path:
+                sys.path.insert(0, tools_dir)
+            from card_generator import generate_card
+            card_buf = generate_card(payload)
+            media = api_v1.media_upload(filename="card.png", file=card_buf)
+            media_ids = [media.media_id]
+            log.info(f"[Twitter] Card uploaded: media_id={media.media_id}")
+        except Exception as e:
+            log.warning(f"[Twitter] Card generation/upload failed (posting without image): {e}")
+
+    # ── Post tweet ─────────────────────────────────────────────────────────────
+    kwargs = {"text": tweet_text}
+    if media_ids:
+        kwargs["media_ids"] = media_ids
+
+    response = client.create_tweet(**kwargs)
     tweet_id = response.data["id"]
     log.info(f"[Twitter] ✅ Tweeted: https://twitter.com/i/web/status/{tweet_id}")
     return tweet_id
@@ -212,7 +247,7 @@ def maybe_tweet(payload: dict, dry_run: bool = False) -> dict:
         return {"status": "skipped_duplicate"}
 
     try:
-        tweet_id = post_tweet(tweet_text)
+        tweet_id = post_tweet(tweet_text, payload=payload)
         return {"status": "posted", "tweet_id": tweet_id, "tweet": tweet_text}
     except Exception as e:
         log.error(f"[Twitter] Post failed: {e}")
@@ -228,7 +263,8 @@ TEST_PAYLOAD = {
     "price":         0.72,
     "usd_value":     127_000.00,
     "source":        "POLYMARKET",
-    "trader_handle": "The Oracle of Oregon",
+    "trader_handle": "GamblingIsAllYouNeed",
+    "wallet_win_rate": 0.58,
 }
 
 TEST_PAYLOAD_KALSHI = {
