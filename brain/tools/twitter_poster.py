@@ -48,7 +48,7 @@ TWITTER_ACCESS_TOKEN_SECRET = os.getenv("TWITTER_ACCESS_TOKEN_SECRET", "")
 TWITTER_MIN_SIZE            = float(os.getenv("TWITTER_MIN_SIZE", "50000"))
 TWITTER_KALSHI_MIN_SIZE     = float(os.getenv("TWITTER_KALSHI_MIN_SIZE", "5000"))
 REDIS_URL                   = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-TWEET_DEDUP_TTL             = 900   # 15 minutes: skip repeat tweets for same market
+TWEET_DEDUP_TTL             = 3600  # 1 hour: prevent identical trade from being tweeted twice
 
 # ── Startup credential audit (INFO level — visible in Railway logs) ────────────
 log.info("[Twitter] ENV audit → "
@@ -187,14 +187,20 @@ def format_tweet(payload: dict) -> str:
 
 
 # ── Redis Deduplication ───────────────────────────────────────────────────────
-def _is_duplicate(market_id: str, source: str) -> bool:
-    """Returns True if we already tweeted this market recently."""
+def _is_duplicate(trade_id: str, source: str) -> bool:
+    """Returns True if we already tweeted this exact trade event recently.
+    
+    Key is based on the unique trade/transaction ID — NOT the market_id.
+    This allows multiple different whale trades on the same market to all be
+    posted, while still preventing the identical event from firing twice if
+    it flows through the pipeline more than once (e.g. via WS + REST poll).
+    """
     try:
         import redis as redis_lib
         r = redis_lib.from_url(REDIS_URL, decode_responses=True, socket_timeout=3)
-        key = f"tweet:sent:{source}:{market_id}"
+        key = f"tweet:sent:{source}:{trade_id}"
         if r.get(key):
-            log.info(f"[Twitter] Dedup skip: already tweeted {source}:{market_id}")
+            log.info(f"[Twitter] Dedup skip: already tweeted trade {source}:{trade_id[:20]}")
             return True
         r.setex(key, TWEET_DEDUP_TTL, "1")
         return False
@@ -296,8 +302,9 @@ def maybe_tweet(payload: dict, dry_run: bool = False) -> dict:
         log.warning("[Twitter] Credentials not set — skipping. Check TWITTER_API_KEY / TWITTER_ACCESS_TOKEN env vars on Railway.")
         return {"status": "skipped_no_credentials"}
 
-    # Deduplication check
-    if _is_duplicate(market_id, source):
+    # Deduplication check — keyed on the unique trade ID, not market_id
+    trade_id = payload.get("source_trade_id") or payload.get("alert_id") or market_id
+    if _is_duplicate(trade_id, source):
         return {"status": "skipped_duplicate"}
 
     try:
