@@ -63,6 +63,17 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 REDIS_URL          = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+# ── Logging (must be initialized before any log.* calls below) ────────────────
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [notifier] %(levelname)s: %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(".tmp/notifier.log", mode="a"),
+    ],
+)
+log = logging.getLogger(__name__)
+
 # ── Twitter/X auto-posting ────────────────────────────────────────────────────
 # IMPORTANT: notifier.py lives in tools/ but is imported from brain/ by main.py.
 # A bare 'from twitter_poster import ...' fails silently because brain/ is the
@@ -84,15 +95,6 @@ RATE_LIMIT_WHALE_TTL    = 300   # 5 minutes: one WHALE alert per market
 RATE_LIMIT_STANDARD_MAX = 10    # max STANDARD alerts per hour
 RATE_LIMIT_STANDARD_TTL = 3600
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [notifier] %(levelname)s: %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(".tmp/notifier.log", mode="a"),
-    ],
-)
-log = logging.getLogger(__name__)
 
 
 # ── Rate Limiting ─────────────────────────────────────────────────────────────
