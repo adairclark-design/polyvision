@@ -4,7 +4,7 @@ WORKDIR /app
 
 # System deps for psycopg2
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc curl && \
+    libpq-dev gcc curl fonts-liberation && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python deps
