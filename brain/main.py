@@ -192,6 +192,7 @@ class TradeEvent(BaseModel):
     timestamp:     str = ''
     trader_pseudonym: str = ''
     trader_name:   str = ''
+    source:        str = 'POLYMARKET'   # POLYMARKET | KALSHI — preserved through full pipeline
 
 class WhaleFollowRequest(BaseModel):
     wallet_address:     str
@@ -319,11 +320,11 @@ async def run_pipeline(event_dict: dict):
         if not alert:
             return   # filtered out by threshold
 
-        # 1a. Win Rate Pre-Fetch — use existing wallet X-Ray (Redis-cached) to
-        #     compute profitable-trade win rate and patch it into the alert before
-        #     it hits the dashboard. Falls back silently; never stalls the pipeline.
-        wallet = event_dict.get('maker_address', '')
-        if wallet and alert.get('wallet_win_rate') is None:
+        # 1a. Win Rate + Real Handle Pre-Fetch (Polymarket only)
+        #     Kalshi trades use a different identity system — skip xray entirely.
+        wallet       = event_dict.get('maker_address', '')
+        is_polymarket = event_dict.get('source', 'POLYMARKET').upper() == 'POLYMARKET'
+        if is_polymarket and wallet and alert.get('wallet_win_rate') is None:
             try:
                 xray_profile = await asyncio.get_event_loop().run_in_executor(
                     None, get_wallet_xray, wallet
@@ -340,7 +341,7 @@ async def run_pipeline(event_dict: dict):
                     )
                     log.info(f"🎯 Win rate for {wallet[:10]}…: {fetched_wr:.1%}")
 
-                # Patch real Polymarket username — replaces the synthetic handle so
+                # Patch real Polymarket username — replaces synthetic handle so
                 # tweets, Discord embeds, and card images all show the verified name.
                 real_name = (
                     xray_profile.get('name')
