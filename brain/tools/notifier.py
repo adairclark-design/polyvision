@@ -64,12 +64,21 @@ TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 REDIS_URL          = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # ── Twitter/X auto-posting ────────────────────────────────────────────────────
+# IMPORTANT: notifier.py lives in tools/ but is imported from brain/ by main.py.
+# A bare 'from twitter_poster import ...' fails silently because brain/ is the
+# cwd, not brain/tools/. We fix this by injecting tools/ into sys.path first.
 try:
+    import sys as _sys
+    _tools_dir = os.path.dirname(os.path.abspath(__file__))
+    if _tools_dir not in _sys.path:
+        _sys.path.insert(0, _tools_dir)
     from twitter_poster import maybe_tweet as _maybe_tweet
     TWITTER_ENABLED = True
-except ImportError:
+    log.info("[Twitter] twitter_poster loaded — TWITTER_ENABLED=True")
+except ImportError as _e:
     TWITTER_ENABLED = False
     _maybe_tweet = None
+    log.warning(f"[Twitter] twitter_poster import failed — tweets disabled: {_e}")
 
 RATE_LIMIT_WHALE_TTL    = 300   # 5 minutes: one WHALE alert per market
 RATE_LIMIT_STANDARD_MAX = 10    # max STANDARD alerts per hour

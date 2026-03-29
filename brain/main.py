@@ -324,16 +324,37 @@ async def run_pipeline(event_dict: dict):
         #     it hits the dashboard. Falls back silently; never stalls the pipeline.
         wallet = event_dict.get('maker_address', '')
         if wallet and alert.get('wallet_win_rate') is None:
-            fetched_wr = await asyncio.get_event_loop().run_in_executor(
-                None, _compute_win_rate_from_xray, wallet
-            )
-            if fetched_wr is not None:
-                alert['wallet_win_rate'] = fetched_wr
-                # Also update copy-trade flag now that we have real data
-                alert['copy_trade_recommended'] = fetched_wr >= float(
-                    os.getenv('COPY_TRADE_MIN_WIN_RATE', '0.60')
+            try:
+                xray_profile = await asyncio.get_event_loop().run_in_executor(
+                    None, get_wallet_xray, wallet
                 )
-                log.info(f"🎯 Win rate for {wallet[:10]}…: {fetched_wr:.1%}")
+                # Patch win rate
+                positions = xray_profile.get('positions', [])
+                closed    = [p for p in positions if not p.get('is_open', True)]
+                if closed:
+                    wins        = sum(1 for p in closed if (p.get('net_pnl') or 0) > 0)
+                    fetched_wr  = round(wins / len(closed), 4)
+                    alert['wallet_win_rate']      = fetched_wr
+                    alert['copy_trade_recommended'] = fetched_wr >= float(
+                        os.getenv('COPY_TRADE_MIN_WIN_RATE', '0.60')
+                    )
+                    log.info(f"🎯 Win rate for {wallet[:10]}…: {fetched_wr:.1%}")
+
+                # Patch real Polymarket username — replaces the synthetic handle so
+                # tweets, Discord embeds, and card images all show the verified name.
+                real_name = (
+                    xray_profile.get('name')
+                    or xray_profile.get('username')
+                    or xray_profile.get('pseudonym')
+                )
+                if real_name and real_name.strip():
+                    old_handle = alert.get('trader_handle', '')
+                    alert['trader_handle'] = real_name.strip()
+                    log.info(f"🏷  Handle patched: '{old_handle}' → '{real_name.strip()}'")
+
+            except Exception as _xray_err:
+                log.debug(f"xray prefetch skipped for {wallet[:10]}…: {_xray_err}")
+
 
         # 1b. Cluster Detection — check if 3+ whales on same side within 15 min
         #     If a cluster is found, promote the alert to CLUSTER tier
