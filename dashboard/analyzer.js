@@ -19,12 +19,37 @@ async function analyzeWallet() {
   load.style.display = 'block';
 
   try {
-    const res = await fetch(`${BRAIN_URL}/analyze-wallet?query=${encodeURIComponent(input)}`);
+    let targetQuery = input;
+    let res = await fetch(`${BRAIN_URL}/analyze-wallet?query=${encodeURIComponent(targetQuery)}`);
+    
+    // If backend doesn't find the username/handle natively, use Polymarket API as a historical fallback proxy
+    if (!res.ok && res.status === 404 && !input.startsWith('0x')) {
+      try {
+        const pmRes = await fetch(`https://gamma-api.polymarket.com/profiles?username=${encodeURIComponent(input)}`);
+        if (pmRes.ok) {
+          const pmData = await pmRes.json();
+          const pf = Array.isArray(pmData) ? pmData[0] : pmData;
+          if (pf && pf.proxyWallet) {
+            targetQuery = pf.proxyWallet;
+            res = await fetch(`${BRAIN_URL}/analyze-wallet?query=${encodeURIComponent(targetQuery)}`);
+          }
+        }
+      } catch (proxyErr) {
+        console.warn('Proxy fallback failed:', proxyErr);
+      }
+    }
+
     if (!res.ok) {
       throw new Error("Wallet not found or no historical data available.");
     }
     
     const data = await res.json();
+    
+    // If the proxy succeeded, replace the backend's generated fake handle with the real searched username
+    if (targetQuery !== input && data.handle) {
+      data.handle = input;
+    }
+    
     renderArtifact(data);
 
     load.style.display = 'none';

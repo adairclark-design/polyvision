@@ -104,7 +104,14 @@ def init_db():
 def upsert_wallet(conn, trade: dict) -> dict:
     """Upsert a wallet row and return the updated WhaleProfile."""
     addr     = trade["maker_address"]
-    handle   = generate_handle(addr)
+    
+    # Prioritize real Polymarket usernames over synthetic identities
+    real_name = trade.get("trader_name", "").strip() or trade.get("trader_pseudonym", "").strip()
+    if real_name and not real_name.startswith("0x"):
+        handle = real_name
+    else:
+        handle = generate_handle(addr)
+        
     usd      = float(trade.get("usd_value", 0))
     now      = datetime.now(timezone.utc).isoformat()
 
