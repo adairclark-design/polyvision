@@ -164,6 +164,33 @@ def dispatch_video_package(payload: dict, img_buf: io.BytesIO):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    print("Testing Video Factory locally...")
-    # This block won't have image buffer unless we mock it, meant to be imported.
-    pass
+    import argparse
+    parser = argparse.ArgumentParser(description="PolyVision Video Factory")
+    parser.add_argument("--test", action="store_true", help="Run with fixture payload and send test email")
+    args = parser.parse_args()
+
+    if args.test:
+        print("🧪 Running Video Factory test payload...\n")
+        TEST_PAYLOAD = {
+            "alert_id":               "test-video-001",
+            "alert_tier":             "CLUSTER",
+            "trader_handle":          "The Oracle of Oregon",
+            "wallet_address":         "0xDeAdBeEf1234567890abcdef",
+            "market_title":           "Will the Fed cut rates in March 2026?",
+            "outcome":                "Yes",
+            "price":                  0.72,
+            "usd_value":              250000.00,
+            "wallet_win_rate":        0.73,
+            "source":                 "POLYMARKET"
+        }
+        
+        # Synthesize a pure black image buffer for the test since we don't have the canvas generator locally
+        from PIL import Image
+        import io
+        img = Image.new('RGB', (1080, 1920), color = (0, 0, 0))
+        img_buf = io.BytesIO()
+        img.save(img_buf, format='PNG')
+        img_buf.seek(0)
+        
+        dispatch_video_package(TEST_PAYLOAD, img_buf)
+        print("✅ Test execution complete! Check your inbox.")
