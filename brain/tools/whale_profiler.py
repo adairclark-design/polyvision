@@ -116,6 +116,7 @@ def upsert_wallet(conn, trade: dict) -> dict:
             ON CONFLICT (wallet_address) DO UPDATE
                 SET total_trades     = wallets.total_trades + 1,
                     total_volume_usd = wallets.total_volume_usd + EXCLUDED.total_volume_usd,
+                    handle           = EXCLUDED.handle,
                     last_seen        = NOW()
             RETURNING *;
         """, (addr, handle, usd))

@@ -373,6 +373,15 @@ async def run_pipeline(event_dict: dict):
                 except Exception as _xray_err:
                     log.debug(f"xray enrichment skipped for {wallet[:10]}…: {_xray_err}")
 
+        # 1c. Absolute safety guard: if handle STILL looks like a raw wallet
+        #     address after all 3 tiers, replace it with the synthetic persona.
+        #     This catches: poisoned DB rows, fully anonymous wallets where
+        #     both Polymarket API and xray return no public name.
+        final_handle = alert.get('trader_handle', '')
+        if final_handle.startswith('0x') and len(final_handle) > 10:
+            safe_handle = _quick_handle(wallet or final_handle)
+            log.info(f"🛡  Handle guard: raw address detected → replacing with '{safe_handle}'")
+            alert['trader_handle'] = safe_handle
 
         # 1b. Cluster Detection — check if 3+ whales on same side within 15 min
         #     If a cluster is found, promote the alert to CLUSTER tier
