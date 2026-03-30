@@ -1113,60 +1113,150 @@ async def analyze_wallet(query: str):
     """
     Public endpoint for the Free Top-of-Funnel Whale Analyzer Tool.
     Requires no auth. Used to generate viral Share Cards.
+
+    Lookup strategy (ordered by priority):
+    1. Redis cache scan — search last 500 alerts for matching trader_handle (real username)
+       → resolves username → wallet_address for DB lookup
+    2. PostgreSQL wallets table — by exact wallet_address OR handle ILIKE
+    3. If wallet found in DB, aggregate live stats from the alerts Redis cache
+       (since trades table may be sparse; Redis has all recent trade data)
     """
     if not DATABASE_URL:
         raise HTTPException(503, 'Database not configured.')
-    
-    query = query.strip()
+
+    q = query.strip()
+    if not q:
+        raise HTTPException(400, 'Query cannot be empty.')
+
     try:
+        # ── Step 1: Redis scan for real username match ────────────────────────
+        resolved_wallet: str | None = None
+        resolved_handle: str | None = None
+
+        raw_events = await redis_client.zrevrange(CACHE_KEY, 0, 499)
+        events = []
+        for raw in raw_events:
+            try:
+                events.append(json.loads(raw))
+            except Exception:
+                pass
+
+        # Search for matching trader_handle (case-insensitive) or wallet address
+        for ev in events:
+            ev_handle = ev.get('trader_handle', '')
+            ev_wallet = ev.get('wallet_address', '')
+            if (q.lower() == ev_handle.lower() or
+                    q.lower() in ev_handle.lower() or
+                    q.lower() == ev_wallet.lower()):
+                resolved_wallet = ev_wallet
+                resolved_handle = ev_handle
+                break
+
+        # ── Step 2: PostgreSQL lookup ─────────────────────────────────────────
         with psycopg2.connect(DATABASE_URL, connect_timeout=5) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                # 1. Look up wallet by EXACT address or ILIKE handle
-                cur.execute("""
-                    SELECT wallet_address, handle, win_rate, roi_all_time, first_seen
-                    FROM wallets 
-                    WHERE wallet_address ILIKE %s OR handle ILIKE %s
-                    ORDER BY first_seen DESC
-                    LIMIT 1;
-                """, (query, f"%{query}%"))
-                
+
+                # If Redis resolved a wallet address, query by exact address
+                # Otherwise fall back to ILIKE search on handle or address
+                if resolved_wallet:
+                    cur.execute("""
+                        SELECT wallet_address, handle, win_rate, roi_all_time,
+                               total_trades, total_volume_usd
+                        FROM wallets
+                        WHERE wallet_address = %s
+                        LIMIT 1;
+                    """, (resolved_wallet,))
+                else:
+                    cur.execute("""
+                        SELECT wallet_address, handle, win_rate, roi_all_time,
+                               total_trades, total_volume_usd
+                        FROM wallets
+                        WHERE wallet_address ILIKE %s OR handle ILIKE %s
+                        ORDER BY last_seen DESC
+                        LIMIT 1;
+                    """, (q, f"%{q}%"))
+
                 user = cur.fetchone()
+
+                # If we found a wallet via Redis but it's somehow not in DB yet
+                # (e.g. whale_profiler hasn't run for it), build a synthetic row
+                # from the Redis alert data directly
+                if not user and resolved_wallet:
+                    # Aggregate stats directly from Redis events
+                    matching = [e for e in events
+                                if e.get('wallet_address', '').lower() == resolved_wallet.lower()]
+                    total_volume = sum(float(e.get('usd_value', 0)) for e in matching)
+
+                    # Use the most recent alert's profiler data for win_rate / roi
+                    latest = matching[0] if matching else {}
+                    return {
+                        "wallet_address": resolved_wallet,
+                        "handle": resolved_handle or q,
+                        "source": latest.get('source', 'POLYMARKET'),
+                        "win_rate": float(latest.get('wallet_win_rate') or 0.0),
+                        "roi_all_time": float(latest.get('wallet_roi_30d') or 0.0),
+                        "total_trades": int(latest.get('wallet_total_trades') or len(matching)),
+                        "total_volume": float(latest.get('wallet_total_volume') or total_volume),
+                        "best_trades": [],
+                    }
+
                 if not user:
                     raise HTTPException(404, "Wallet or user not found.")
-                    
+
                 wallet_address = user['wallet_address']
-                
-                # 2. Fetch all-time trades count and total volume
-                cur.execute("""
-                    SELECT COUNT(*) as total_trades, SUM(usd_value) as total_volume
-                    FROM trades 
-                    WHERE wallet_address = %s
-                """, (wallet_address,))
-                stats = cur.fetchone()
-                
-                # 3. Fetch top 3 most profitable trades
+                # Use the real username from Redis if we have it
+                display_handle = resolved_handle or user['handle']
+
+                # ── Step 3: Enrich with live Redis trade stats ────────────────
+                # The trades table is sparse (only resolved positions tracked)
+                # so we cross-reference Redis for richer volume/trade counts
+                redis_matching = [e for e in events
+                                  if e.get('wallet_address', '').lower() == wallet_address.lower()]
+
+                db_win_rate = float(user['win_rate'] or 0.0)
+                db_roi      = float(user['roi_all_time'] or 0.0)
+                db_trades   = int(user['total_trades'] or 0)
+                db_volume   = float(user['total_volume_usd'] or 0.0)
+
+                # If Redis has more recent data prefer it for trade count / volume
+                if redis_matching:
+                    latest_alert = redis_matching[0]
+                    redis_trades = int(latest_alert.get('wallet_total_trades') or 0)
+                    redis_volume = float(latest_alert.get('wallet_total_volume') or 0)
+                    redis_wr     = float(latest_alert.get('wallet_win_rate') or 0)
+                    redis_roi    = float(latest_alert.get('wallet_roi_30d') or 0)
+
+                    # Take the higher of DB vs Redis since Redis has fresher data
+                    db_trades = max(db_trades, redis_trades)
+                    db_volume = max(db_volume, redis_volume)
+                    if redis_wr > 0:
+                        db_win_rate = redis_wr
+                    if redis_roi != 0:
+                        db_roi = redis_roi
+
+                # Fetch top 3 profitable resolved trades from DB
                 cur.execute("""
                     SELECT market_title, outcome, size as profit
-                    FROM trades 
+                    FROM trades
                     WHERE wallet_address = %s AND resolved = TRUE AND won = TRUE
                     ORDER BY size DESC
                     LIMIT 3;
                 """, (wallet_address,))
                 best_trades = cur.fetchall()
-                
-                payload = {
-                    "wallet_address": user['wallet_address'],
-                    "handle": user['handle'],
+
+                return {
+                    "wallet_address": wallet_address,
+                    "handle": display_handle,
                     "source": "POLYMARKET",
-                    "win_rate": float(user['win_rate']) if user['win_rate'] is not None else 0.0,
-                    "roi_all_time": float(user['roi_all_time']) if user['roi_all_time'] is not None else 0.0,
-                    "total_trades": stats['total_trades'] or 0,
-                    "total_volume": float(stats['total_volume'] or 0.0),
-                    "best_trades": [dict(t) for t in best_trades]
+                    "win_rate": db_win_rate,
+                    "roi_all_time": db_roi,
+                    "total_trades": db_trades,
+                    "total_volume": db_volume,
+                    "best_trades": [dict(t) for t in best_trades],
                 }
-                return payload
+
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f'/api/analyze-wallet failed: {e}')
+        log.error(f'/api/analyze-wallet failed: {e}', exc_info=True)
         raise HTTPException(500, "Internal Server Error")
