@@ -16,7 +16,8 @@ import psycopg2
 log = logging.getLogger(__name__)
 
 DATABASE_URL = os.getenv("DATABASE_URL", "")
-SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+RESEND_FROM    = os.getenv("RESEND_FROM", "onboarding@resend.dev")
 # Default to sending the CRM reminders to the same email as the briefing
 TARGET_EMAIL = os.getenv("BRIEFING_EMAIL_TO", "adair.clark@gmail.com")
 
@@ -100,8 +101,8 @@ TARGET_COMMUNITIES = [
 ]
 
 def send_crm_email(target: dict):
-    if not SENDGRID_API_KEY:
-        log.warning("[TrojanCRM] No SENDGRID_API_KEY found. Skipping CRM email.")
+    if not RESEND_API_KEY:
+        log.warning("[TrojanCRM] No RESEND_API_KEY found. Skipping CRM email.")
         return
 
     html_content = f"""
@@ -128,16 +129,16 @@ def send_crm_email(target: dict):
     """
 
     data = {
-        'personalizations': [{'to': [{'email': TARGET_EMAIL}]}],
-        'from': {'email': TARGET_EMAIL, 'name': 'PolyVision Marketing'},
-        'subject': f"CRM Action Required: Prospecting {target['name']}",
-        'content': [{'type': 'text/html', 'value': html_content}]
+        "from":    RESEND_FROM,
+        "to":      [TARGET_EMAIL],
+        "subject": f"CRM Action Required: Prospecting {target['name']}",
+        "html":    html_content
     }
 
     try:
         r = requests.post(
-            'https://api.sendgrid.com/v3/mail/send',
-            headers={'Authorization': f'Bearer {SENDGRID_API_KEY}', 'Content-Type': 'application/json'},
+            'https://api.resend.com/emails',
+            headers={'Authorization': f'Bearer {RESEND_API_KEY}', 'Content-Type': 'application/json'},
             json=data,
             timeout=10
         )

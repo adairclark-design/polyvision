@@ -18,8 +18,9 @@ load_dotenv()
 log = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY", "")
-TARGET_EMAIL = os.getenv("BRIEFING_EMAIL_TO", "adair.clark@gmail.com")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+RESEND_FROM    = os.getenv("RESEND_FROM", "onboarding@resend.dev")
+TARGET_EMAIL   = os.getenv("BRIEFING_EMAIL_TO", "adair.clark@gmail.com")
 
 def _generate_tiktok_script(payload: dict) -> dict:
     """Uses GPT-4o-mini to write a viral 15-second TikTok script and caption."""
@@ -85,8 +86,8 @@ def _generate_tts_audio(script_text: str) -> bytes:
         return None
 
 def dispatch_video_package(payload: dict, img_buf: io.BytesIO):
-    """Orchestrator: Generates content and emails it natively via SendGrid."""
-    if not SENDGRID_API_KEY or not OPENAI_API_KEY:
+    """Orchestrator: Generates content and emails it natively via Resend."""
+    if not RESEND_API_KEY or not OPENAI_API_KEY:
         log.warning("[VideoFactory] Missing API keys. Skipping package dispatch.")
         return
 
@@ -130,30 +131,26 @@ def dispatch_video_package(payload: dict, img_buf: io.BytesIO):
     """
 
     data = {
-        'personalizations': [{'to': [{'email': TARGET_EMAIL}]}],
-        'from': {'email': TARGET_EMAIL, 'name': 'PolyVision Factory'},
-        'subject': f"TikTok Package: ${payload.get('usd_value', 0):,.0f} moved on {payload.get('market_title', 'Unknown Market')[:30]}...",
-        'content': [{'type': 'text/html', 'value': html_content}],
-        'attachments': [
+        "from": RESEND_FROM,
+        "to": [TARGET_EMAIL],
+        "subject": f"TikTok Package: ${payload.get('usd_value', 0):,.0f} moved on {payload.get('market_title', 'Unknown Market')[:30]}...",
+        "html": html_content,
+        "attachments": [
             {
-                'content': img_b64,
-                'filename': 'trade_card.png',
-                'type': 'image/png',
-                'disposition': 'attachment'
+                "content": img_b64,
+                "filename": "trade_card.png"
             },
             {
-                'content': mp3_b64,
-                'filename': 'voiceover.mp3',
-                'type': 'audio/mpeg',
-                'disposition': 'attachment'
+                "content": mp3_b64,
+                "filename": "voiceover.mp3"
             }
         ]
     }
 
     try:
         r = requests.post(
-            'https://api.sendgrid.com/v3/mail/send',
-            headers={'Authorization': f'Bearer {SENDGRID_API_KEY}', 'Content-Type': 'application/json'},
+            'https://api.resend.com/emails',
+            headers={'Authorization': f'Bearer {RESEND_API_KEY}', 'Content-Type': 'application/json'},
             json=data,
             timeout=15
         )
