@@ -65,9 +65,9 @@ def generate():
     try:
         with psycopg2.connect(DATABASE_URL) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                # Top 5,000 wallets with at least 5 resolved trades
+                # Top 5,000 wallets with at least 1 resolved trades
                 cur.execute("""
-                    SELECT w.wallet_address, w.handle, w.source, w.win_rate, w.roi_all_time,
+                    SELECT w.wallet_address, w.handle, w.win_rate, w.roi_all_time,
                            COUNT(t.id) as resolved_count
                     FROM wallets w
                     JOIN trades t ON t.wallet_address = w.wallet_address
@@ -115,7 +115,7 @@ def generate():
                     html_content = HTML_TEMPLATE.format(
                         handle=w['handle'],
                         wallet_address=w_addr,
-                        source=w['source'],
+                        source="POLYMARKET",
                         schema_json=json.dumps(schema, indent=2),
                         win_rate=f"{float(wr_val)*100:.0f}%" if wr_val else "0%",
                         roi=f"{float(roi_val)*100:+.1f}%" if roi_val else "0%",

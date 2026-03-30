@@ -1123,10 +1123,10 @@ async def analyze_wallet(query: str):
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 # 1. Look up wallet by EXACT address or ILIKE handle
                 cur.execute("""
-                    SELECT wallet_address, handle, source, win_rate, roi_all_time, created_at
+                    SELECT wallet_address, handle, win_rate, roi_all_time, first_seen
                     FROM wallets 
                     WHERE wallet_address ILIKE %s OR handle ILIKE %s
-                    ORDER BY created_at DESC
+                    ORDER BY first_seen DESC
                     LIMIT 1;
                 """, (query, f"%{query}%"))
                 
@@ -1157,7 +1157,7 @@ async def analyze_wallet(query: str):
                 payload = {
                     "wallet_address": user['wallet_address'],
                     "handle": user['handle'],
-                    "source": user['source'],
+                    "source": "POLYMARKET",
                     "win_rate": float(user['win_rate']) if user['win_rate'] is not None else 0.0,
                     "roi_all_time": float(user['roi_all_time']) if user['roi_all_time'] is not None else 0.0,
                     "total_trades": stats['total_trades'] or 0,
