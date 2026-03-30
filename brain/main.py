@@ -60,6 +60,7 @@ from market_resolver  import (
     run_resolution_pass,
 )
 from trojan_horse_crm import run_crm_pass as _run_crm_pass
+from twitter_threader import run_daily_recap as _run_daily_recap
 from subscriptions import (
     init_db        as init_subscriptions_db,
     is_pro, get_subscription, upsert_subscription, cancel_subscription,
@@ -167,12 +168,21 @@ async def lifespan(app: FastAPI):
         name='Trojan Horse Discord Marketing Reminder (Tues/Thu 10AM EST)',
         replace_existing=True,
     )
+    # ── X (Twitter) Daily Recap Thread (19:00 EST) ─────────────────────────────
+    scheduler.add_job(
+        lambda: asyncio.get_event_loop().run_in_executor(None, _run_daily_recap),
+        trigger=CronTrigger(hour=19, minute=0, timezone='America/New_York'),
+        id='twitter_daily_recap',
+        name='X Daily Recap Thread (19:00 EST)',
+        replace_existing=True,
+    )
     
     scheduler.start()
     log.info(f'Briefing scheduler started — fires daily at {BRIEFING_HOUR:02d}:00 EST.')
     log.info('Market resolution cron scheduled — fires daily at 06:00 EST.')
     log.info('Price impact tracker cron scheduled — fires daily at 07:30 EST.')
     log.info('Trojan Horse CRM cron scheduled — fires Tue/Thu at 10:00 EST.')
+    log.info('X (Twitter) Daily Thread scheduled — fires daily at 19:00 EST.')
 
     yield
     scheduler.shutdown(wait=False)
