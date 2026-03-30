@@ -502,7 +502,7 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
     # ── Reddit Silver Platter ──────────────────────────────────────────────────
     if REDDIT_ENABLED and RESEND_API_KEY and REDDIT_EMAIL_TO:
         reddit_thresh = REDDIT_KALSHI_MIN_SIZE if source == "KALSHI" else REDDIT_MIN_SIZE
-        if usd_value >= reddit_thresh or alert_tier == "CLUSTER":
+        if usd_value >= reddit_thresh or payload.get("alert_tier") == "CLUSTER":
             try:
                 log.info(f"Generating Reddit package for ${usd_value:,.0f} trade...")
                 r_pkg = _generate_reddit_package(payload)
@@ -516,7 +516,7 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
                 
     # ── TikTok / Reels Video Factory ───────────────────────────────────────────
     # We trigger the Short-Form Video Factory alongside the Reddit tier
-    if usd_value >= (REDDIT_KALSHI_MIN_SIZE if source == "KALSHI" else REDDIT_MIN_SIZE) or alert_tier == "CLUSTER":
+    if usd_value >= (REDDIT_KALSHI_MIN_SIZE if source == "KALSHI" else REDDIT_MIN_SIZE) or payload.get("alert_tier") == "CLUSTER":
         try:
             log.info(f"Generating TikTok Video Package for ${usd_value:,.0f} trade...")
             v_img = _generate_card(payload)
