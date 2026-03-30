@@ -61,6 +61,10 @@ DISCORD_KALSHI_TIERS = [
 DISCORD_TIERS = DISCORD_POLY_TIERS
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
+
+DISCORD_REDDIT_WEBHOOK_URL = os.getenv("DISCORD_REDDIT_WEBHOOK_URL", "")
+REDDIT_MIN_SIZE            = float(os.getenv("REDDIT_MIN_SIZE", "100000"))
+REDDIT_KALSHI_MIN_SIZE     = float(os.getenv("REDDIT_KALSHI_MIN_SIZE", "25000"))
 REDIS_URL          = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # ── Logging (must be initialized before any log.* calls below) ────────────────
@@ -90,6 +94,23 @@ except ImportError as _e:
     TWITTER_ENABLED = False
     _maybe_tweet = None
     log.warning(f"[Twitter] twitter_poster import failed — tweets disabled: {_e}")
+
+
+# ── Reddit/Discord Silver Platter auto-post ───────────────────────────────────
+try:
+    import sys as _sys
+    _tools_dir = os.path.dirname(os.path.abspath(__file__))
+    if _tools_dir not in _sys.path:
+        _sys.path.insert(0, _tools_dir)
+    from reddit_engine import generate_reddit_package as _generate_reddit_package
+    from card_generator import generate_card as _generate_card
+    REDDIT_ENABLED = True
+    log.info("[Reddit] reddit_engine loaded — REDDIT_ENABLED=True")
+except ImportError as _e:
+    REDDIT_ENABLED = False
+    _generate_reddit_package = None
+    _generate_card = None
+    log.warning(f"[Reddit] reddit_engine import failed: {_e}")
 
 RATE_LIMIT_WHALE_TTL    = 300   # 5 minutes: one WHALE alert per market
 RATE_LIMIT_STANDARD_MAX = 10    # max STANDARD alerts per hour
@@ -326,6 +347,27 @@ def send_discord(embed: dict, webhook_override: str = ""):
     r.raise_for_status()
 
 
+
+def send_reddit_discord(pkg: dict, img_buf):
+    if not DISCORD_REDDIT_WEBHOOK_URL:
+        return
+    embed = {
+        "embeds": [{
+            "title": "🥈 Reddit Silver Platter Package",
+            "description": f"Ready to post on: **{pkg.get('subreddit', 'r/Polymarket')}**\n\n**Title:**\n```text\n{pkg.get('title', '')}\n```\n**Comment:**\n```text\n{pkg.get('comment', '')}\n```",
+            "color": 0xFF4500,
+            "image": {"url": "attachment://card.png"}
+        }]
+    }
+    r = requests.post(
+        DISCORD_REDDIT_WEBHOOK_URL, 
+        files={'file': ('card.png', img_buf, 'image/png')}, 
+        data={'payload_json': json.dumps(embed)}, 
+        timeout=15
+    )
+    r.raise_for_status()
+
+
 def send_telegram(text: str):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         raise ValueError("Telegram credentials not set.")
@@ -391,6 +433,14 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
         print(tg_text if qualifying_tiers else "SKIPPED")
         if TWITTER_ENABLED:
             _maybe_tweet(payload, dry_run=True)
+            
+        if REDDIT_ENABLED:
+            reddit_thresh = REDDIT_KALSHI_MIN_SIZE if source == "KALSHI" else REDDIT_MIN_SIZE
+            if usd_value >= reddit_thresh or payload.get("alert_tier") == "CLUSTER":
+                print(f"\n── 🥈 Reddit Silver Platter (would generate) ─────")
+                pkg = _generate_reddit_package(payload)
+                print(json.dumps(pkg, indent=2))
+        
         return {"status": "dry_run", "channels": {}}
 
     results = {
@@ -412,6 +462,21 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
         results["telegram"] = send_with_retry("Telegram", lambda: send_telegram(tg_text))
     else:
         results["telegram"] = "skipped_min_size"
+
+    # ── Reddit Silver Platter ──────────────────────────────────────────────────
+    if REDDIT_ENABLED and DISCORD_REDDIT_WEBHOOK_URL:
+        reddit_thresh = REDDIT_KALSHI_MIN_SIZE if source == "KALSHI" else REDDIT_MIN_SIZE
+        if usd_value >= reddit_thresh or alert_tier == "CLUSTER":
+            try:
+                log.info(f"Generating Reddit package for ${usd_value:,.0f} trade...")
+                r_pkg = _generate_reddit_package(payload)
+                r_img = _generate_card(payload)
+                if r_img:
+                    send_with_retry("Reddit Discord", lambda: send_reddit_discord(r_pkg, r_img))
+                    results["reddit"] = "delivered"
+            except Exception as e:
+                log.error(f"[Reddit] Engine error: {e}")
+                results["reddit"] = "failed"
 
     # ── Twitter/X auto-post ────────────────────────────────────────────────────
     if TWITTER_ENABLED:
