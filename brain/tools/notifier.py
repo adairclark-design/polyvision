@@ -20,6 +20,7 @@ import argparse
 import requests
 import redis as redis_lib
 from dotenv import load_dotenv
+from video_factory import dispatch_video_package
 
 load_dotenv()
 
@@ -388,9 +389,10 @@ def send_reddit_email(pkg: dict, img_buf):
             "Content-Type":  "application/json",
         },
         json={
-            "from":    "PolyVision Alerts <alerts@polyvision.app>",
+            "from":    os.getenv("RESEND_FROM", "PolyVision Alerts <alerts@polyvision.app>"),
             "to":      [REDDIT_EMAIL_TO],
             "subject": f"Reddit Package: {title[:40]}...",
+
             "html":    html,
             "attachments": [{
                 "filename": "card.png",
@@ -511,6 +513,20 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
             except Exception as e:
                 log.error(f"[Reddit] Engine error: {e}")
                 results["reddit"] = "failed"
+                
+    # ── TikTok / Reels Video Factory ───────────────────────────────────────────
+    # We trigger the Short-Form Video Factory alongside the Reddit tier
+    if usd_value >= (REDDIT_KALSHI_MIN_SIZE if source == "KALSHI" else REDDIT_MIN_SIZE) or alert_tier == "CLUSTER":
+        try:
+            log.info(f"Generating TikTok Video Package for ${usd_value:,.0f} trade...")
+            v_img = _generate_card(payload)
+            if v_img:
+                # We fire and forget this async or it will block for 5 seconds during TTS generation
+                send_with_retry("TikTok Factory", lambda: dispatch_video_package(payload, v_img))
+                results["video_factory"] = "delivered"
+        except Exception as e:
+            log.error(f"[VideoFactory] Engine error: {e}")
+            results["video_factory"] = "failed"
 
 
     # ── Twitter/X auto-post ────────────────────────────────────────────────────
