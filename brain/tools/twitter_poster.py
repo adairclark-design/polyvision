@@ -169,8 +169,10 @@ def format_tweet(payload: dict) -> str:
         platform=platform, emoji=emoji, hashtags=hashtags
     )
     
-    # Twitter hard limit is 280
-    chars_left = 280 - len(template_blank)
+    # Twitter hard limit is 280, but their API secretly counts URLs as 23 chars
+    # regardless of actual length, and emojis count as 2 chars. Our polyvision.app
+    # link is 14 chars, so that's a +9 hidden penalty. We use 255 to be perfectly safe.
+    chars_left = 255 - len(template_blank)
     
     # Truncate market if necessary
     if len(market) > chars_left:
