@@ -84,7 +84,7 @@ def build_prompt(payload: dict) -> list[dict]:
         "Reddit post. \n\n"
         "1. Select the BEST target subreddit from this list based on the market topic: " + ", ".join(SUBREDDIT_ROSTER) + ".\n"
         "2. Write a clickbait (but authentic-sounding) Reddit Title (e.g., 'Someone just dropped $250k that the Fed won\\'t cut rates. What do they know?').\n"
-        "3. Write a short, casual comment to accompany the image. In the comment, subtly mention you 'found this on PolyVision' and maybe reference the whale's win rate.\n\n"
+        "3. Write a short, casual comment to accompany the image. In the comment, subtly mention you 'found this on PolyVision' and maybe reference the whale's win rate. ALWAYS end the comment with: 'Btw if anyone wants to backtest a specific wallet they found, I built a free grader at polyvision.app/analyzer.'\n\n"
         "Respond STRICTLY with a valid JSON object matching this schema:\n"
         "{\n"
         "  \"subreddit\": \"r/...\",\n"

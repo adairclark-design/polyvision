@@ -49,7 +49,7 @@ def _generate_tiktok_script(payload: dict) -> dict:
             "3. BE EXTREMELY ENTHUSIASTIC. Use excessive exclamation points and write the most important words in ALL CAPS so the TTS AI yells them with hype.\n"
             "4. Provide exactly two things in a JSON format:\n"
             "   - 'script': The exact words to be read by the highly-energetic TTS voice.\n"
-            "   - 'caption': The text caption for the TikTok post (include relevant hashtags here).\n\n"
+            "   - 'caption': The text caption for the TikTok post. ALWAYS append this exact string to the very end of the caption text: 'Grade your Kalshi/Polymarket wallet\\'s win-rate for free at polyvision.app/analyzer' and include relevant hashtags.\n\n"
             "Return STRICTLY a JSON object matching this schema:\n"
             "{\n  \"script\": \"...\",\n  \"caption\": \"...\"\n}"
         )

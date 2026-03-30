@@ -89,7 +89,7 @@ def generate_thread_copy(trades: list) -> list:
         "Rules:\n"
         "1. First tweet must be a viral Hook summarizing the volume (e.g. 'Over $X was deployed by massive wallets in the last 24h. Here are the 5 biggest bets: 🧵').\n"
         "2. The next tweets must break down exactly 1 trade per tweet in highly engaging, readable formats. Importantly, mention their Persona Handle and visually tag/include their Wallet Address snippet so users can copy-paste and verify on-chain.\n"
-        "3. The final tweet in the array must be a CTA (Call To Action): 'Want real-time live alerts before the market moves? Get the PolyVision Discord bot: polyvision.app'.\n"
+        "3. The final tweet in the array must be a CTA (Call To Action): 'Want real-time live alerts before the market moves? Get the PolyVision Discord bot: polyvision.app | Or grade your own wallet\\'s all-time win rate against these whales natively at polyvision.app/analyzer'.\n"
         "4. Strict Character limit per tweet: 270 chars max.\n\n"
         "Output Requirements:\n"
         "Return STRICTLY a JSON object matching this exact schema, with no markdown code blocks wrapping it:\n"

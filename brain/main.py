@@ -1106,3 +1106,67 @@ async def trigger_remote_video_test():
         return {"status": "success", "message": "Email dispatched to production inbox."}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
+# ── Top of Funnel Marketing API ──────────────────────────────────────────────
+@app.get('/api/analyze-wallet')
+async def analyze_wallet(query: str):
+    """
+    Public endpoint for the Free Top-of-Funnel Whale Analyzer Tool.
+    Requires no auth. Used to generate viral Share Cards.
+    """
+    if not DATABASE_URL:
+        raise HTTPException(503, 'Database not configured.')
+    
+    query = query.strip()
+    try:
+        with psycopg2.connect(DATABASE_URL, connect_timeout=5) as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                # 1. Look up wallet by EXACT address or ILIKE handle
+                cur.execute("""
+                    SELECT wallet_address, handle, source, win_rate, roi_all_time, created_at
+                    FROM wallets 
+                    WHERE wallet_address ILIKE %s OR handle ILIKE %s
+                    ORDER BY created_at DESC
+                    LIMIT 1;
+                """, (query, f"%{query}%"))
+                
+                user = cur.fetchone()
+                if not user:
+                    raise HTTPException(404, "Wallet or user not found.")
+                    
+                wallet_address = user['wallet_address']
+                
+                # 2. Fetch all-time trades count and total volume
+                cur.execute("""
+                    SELECT COUNT(*) as total_trades, SUM(usd_value) as total_volume
+                    FROM trades 
+                    WHERE wallet_address = %s
+                """, (wallet_address,))
+                stats = cur.fetchone()
+                
+                # 3. Fetch top 3 most profitable trades
+                cur.execute("""
+                    SELECT market_title, outcome, size as profit
+                    FROM trades 
+                    WHERE wallet_address = %s AND resolved = TRUE AND won = TRUE
+                    ORDER BY size DESC
+                    LIMIT 3;
+                """, (wallet_address,))
+                best_trades = cur.fetchall()
+                
+                payload = {
+                    "wallet_address": user['wallet_address'],
+                    "handle": user['handle'],
+                    "source": user['source'],
+                    "win_rate": float(user['win_rate']) if user['win_rate'] is not None else 0.0,
+                    "roi_all_time": float(user['roi_all_time']) if user['roi_all_time'] is not None else 0.0,
+                    "total_trades": stats['total_trades'] or 0,
+                    "total_volume": float(stats['total_volume'] or 0.0),
+                    "best_trades": [dict(t) for t in best_trades]
+                }
+                return payload
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f'/api/analyze-wallet failed: {e}')
+        raise HTTPException(500, "Internal Server Error")
