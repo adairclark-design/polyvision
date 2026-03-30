@@ -44,10 +44,11 @@ def _generate_tiktok_script(payload: dict) -> dict:
             f"- Market: \"{market}\"\n"
             f"- Whale's Historic Win Rate: {wr_str}\n\n"
             "Rules:\n"
-            "1. Start with a massive hook (e.g. 'Holy crap, someone just threw...').\n"
+            "1. Start with a massive hook (e.g. 'HOLY CRAP, someone just threw...').\n"
             "2. Ensure it is conversational and spoken (no hashtags in the script text).\n"
-            "3. Provide exactly two things in a JSON format:\n"
-            "   - 'script': The exact words to be read by the TTS voice.\n"
+            "3. BE EXTREMELY ENTHUSIASTIC. Use excessive exclamation points and write the most important words in ALL CAPS so the TTS AI yells them with hype.\n"
+            "4. Provide exactly two things in a JSON format:\n"
+            "   - 'script': The exact words to be read by the highly-energetic TTS voice.\n"
             "   - 'caption': The text caption for the TikTok post (include relevant hashtags here).\n\n"
             "Return STRICTLY a JSON object matching this schema:\n"
             "{\n  \"script\": \"...\",\n  \"caption\": \"...\"\n}"
@@ -77,7 +78,7 @@ def _generate_tts_audio(script_text: str) -> bytes:
         
         response = client.audio.speech.create(
             model="tts-1",
-            voice="onyx",  # Onyx is a deep, masculine, narrative-style voice
+            voice="alloy",  # Alloy is extremely bright, energetic, and hype
             input=script_text
         )
         return response.content
@@ -181,13 +182,19 @@ if __name__ == "__main__":
             "source":                 "POLYMARKET"
         }
         
-        # Synthesize a pure black image buffer for the test since we don't have the canvas generator locally
-        from PIL import Image
-        import io
-        img = Image.new('RGB', (1080, 1920), color = (0, 0, 0))
-        img_buf = io.BytesIO()
-        img.save(img_buf, format='PNG')
-        img_buf.seek(0)
+        # Render the actual visual tradeoff card instead of a black box for the test
+        img_buf = None
+        try:
+            from card_generator import generate_card
+            img_buf = generate_card(TEST_PAYLOAD)
+        except Exception as e:
+            print(f"Failed to generate real card, falling back to dummy: {e}")
+            from PIL import Image
+            import io
+            img = Image.new('RGB', (1080, 1920), color = (0, 0, 0))
+            img_buf = io.BytesIO()
+            img.save(img_buf, format='PNG')
+            img_buf.seek(0)
         
         dispatch_video_package(TEST_PAYLOAD, img_buf)
         print("✅ Test execution complete! Check your inbox.")
