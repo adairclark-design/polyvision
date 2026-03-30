@@ -1094,3 +1094,15 @@ async def recalculate_profiles():
     except Exception as e:
         log.error(f'Recalculation failed: {e}')
         raise HTTPException(500, str(e))
+
+# ── Test Video Factory Endpoint ──────────────────────────────────────────────
+@app.get('/test-video-factory')
+async def trigger_remote_video_test():
+    """Trigger the local video factory script utilizing production infrastructure"""
+    import subprocess
+    import sys
+    try:
+        subprocess.run([sys.executable, 'tools/video_factory.py', '--test'], check=True)
+        return {"status": "success", "message": "Email dispatched to production inbox."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
