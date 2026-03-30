@@ -59,6 +59,7 @@ from market_resolver  import (
     init_db        as init_resolver_db,
     run_resolution_pass,
 )
+from trojan_horse_crm import run_crm_pass as _run_crm_pass
 from subscriptions import (
     init_db        as init_subscriptions_db,
     is_pro, get_subscription, upsert_subscription, cancel_subscription,
@@ -158,10 +159,20 @@ async def lifespan(app: FastAPI):
         name='Daily Price Impact Tracker (07:30 EST)',
         replace_existing=True,
     )
+    # ── Trojan Horse Marketing CRM (Tuesdays & Thursdays at 10:00 EST) ─────────
+    scheduler.add_job(
+        lambda: asyncio.get_event_loop().run_in_executor(None, _run_crm_pass),
+        trigger=CronTrigger(day_of_week='tue,thu', hour=10, minute=0, timezone='America/New_York'),
+        id='trojan_horse_crm',
+        name='Trojan Horse Discord Marketing Reminder (Tues/Thu 10AM EST)',
+        replace_existing=True,
+    )
+    
     scheduler.start()
     log.info(f'Briefing scheduler started — fires daily at {BRIEFING_HOUR:02d}:00 EST.')
     log.info('Market resolution cron scheduled — fires daily at 06:00 EST.')
     log.info('Price impact tracker cron scheduled — fires daily at 07:30 EST.')
+    log.info('Trojan Horse CRM cron scheduled — fires Tue/Thu at 10:00 EST.')
 
     yield
     scheduler.shutdown(wait=False)
