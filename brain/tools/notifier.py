@@ -62,7 +62,8 @@ DISCORD_TIERS = DISCORD_POLY_TIERS
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "")
 
-DISCORD_REDDIT_WEBHOOK_URL = os.getenv("DISCORD_REDDIT_WEBHOOK_URL", "")
+RESEND_API_KEY             = os.getenv("RESEND_API_KEY", "")
+REDDIT_EMAIL_TO            = os.getenv("REDDIT_EMAIL_TO", "adair.clark@gmail.com")
 REDDIT_MIN_SIZE            = float(os.getenv("REDDIT_MIN_SIZE", "100000"))
 REDDIT_KALSHI_MIN_SIZE     = float(os.getenv("REDDIT_KALSHI_MIN_SIZE", "25000"))
 REDIS_URL          = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -348,21 +349,54 @@ def send_discord(embed: dict, webhook_override: str = ""):
 
 
 
-def send_reddit_discord(pkg: dict, img_buf):
-    if not DISCORD_REDDIT_WEBHOOK_URL:
+import base64
+
+def send_reddit_email(pkg: dict, img_buf):
+    if not RESEND_API_KEY or not REDDIT_EMAIL_TO:
         return
-    embed = {
-        "embeds": [{
-            "title": "🥈 Reddit Silver Platter Package",
-            "description": f"Ready to post on: **{pkg.get('subreddit', 'r/Polymarket')}**\n\n**Title:**\n```text\n{pkg.get('title', '')}\n```\n**Comment:**\n```text\n{pkg.get('comment', '')}\n```",
-            "color": 0xFF4500,
-            "image": {"url": "attachment://card.png"}
-        }]
-    }
+        
+    sub = pkg.get('subreddit', 'r/Polymarket')
+    title = pkg.get('title', '')
+    comment = pkg.get('comment', '')
+    
+    html = f"""
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #111827;">
+        <h2 style="color: #0057ff; margin-bottom: 24px;">🥈 Reddit Silver Platter Package</h2>
+        <p><strong>Target Subreddit:</strong> <a href="https://reddit.com/{sub}">{sub}</a></p>
+        
+        <p style="margin-top:20px;"><strong>Title:</strong></p>
+        <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; margin-bottom: 24px; font-size: 16px; font-weight: 500;">
+            {title}
+        </div>
+        
+        <p><strong>Comment:</strong></p>
+        <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb; margin-bottom: 24px; font-size: 15px; line-height: 1.5;">
+            {comment}
+        </div>
+        
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
+        <p style="font-size: 13px; color: #6b7280;">Attached below is the full-res Trade Card. Save it to your camera roll and upload directly to Reddit.</p>
+    </div>
+    """
+    
+    img_b64 = base64.b64encode(img_buf.getvalue()).decode('utf-8')
+    
     r = requests.post(
-        DISCORD_REDDIT_WEBHOOK_URL, 
-        files={'file': ('card.png', img_buf, 'image/png')}, 
-        data={'payload_json': json.dumps(embed)}, 
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type":  "application/json",
+        },
+        json={
+            "from":    "PolyVision Alerts <alerts@polyvision.app>",
+            "to":      [REDDIT_EMAIL_TO],
+            "subject": f"Reddit Package: {title[:40]}...",
+            "html":    html,
+            "attachments": [{
+                "filename": "card.png",
+                "content": img_b64
+            }]
+        },
         timeout=15
     )
     r.raise_for_status()
@@ -464,7 +498,7 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
         results["telegram"] = "skipped_min_size"
 
     # ── Reddit Silver Platter ──────────────────────────────────────────────────
-    if REDDIT_ENABLED and DISCORD_REDDIT_WEBHOOK_URL:
+    if REDDIT_ENABLED and RESEND_API_KEY and REDDIT_EMAIL_TO:
         reddit_thresh = REDDIT_KALSHI_MIN_SIZE if source == "KALSHI" else REDDIT_MIN_SIZE
         if usd_value >= reddit_thresh or alert_tier == "CLUSTER":
             try:
@@ -472,11 +506,12 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
                 r_pkg = _generate_reddit_package(payload)
                 r_img = _generate_card(payload)
                 if r_img:
-                    send_with_retry("Reddit Discord", lambda: send_reddit_discord(r_pkg, r_img))
+                    send_with_retry("Reddit Email", lambda: send_reddit_email(r_pkg, r_img))
                     results["reddit"] = "delivered"
             except Exception as e:
                 log.error(f"[Reddit] Engine error: {e}")
                 results["reddit"] = "failed"
+
 
     # ── Twitter/X auto-post ────────────────────────────────────────────────────
     if TWITTER_ENABLED:
