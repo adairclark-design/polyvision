@@ -80,7 +80,28 @@
     .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
     .handle { font-size: 20px; font-weight: 800; color: var(--text); }
     .address { font-size: 12px; color: var(--muted); margin-top: 4px; font-family: monospace; }
-    .source-badge { background: rgba(0,255,163,0.1); color: var(--mint); padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.5px;}
+    .source-badge { padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.5px;}
+    .source-badge.polymarket { background: rgba(0,255,163,0.1); color: var(--mint); }
+    .source-badge.kalshi { background: rgba(88,166,255,0.12); color: #58a6ff; }
+
+    /* Platform Toggle */
+    .platform-toggle {
+      display: flex; gap: 0; margin-bottom: 28px;
+      background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; overflow: hidden;
+    }
+    .platform-toggle button {
+      flex: 1; padding: 10px 24px; border: none; background: transparent;
+      color: var(--muted); font-weight: 700; font-size: 14px; cursor: pointer;
+      transition: all 0.2s; letter-spacing: 0.3px;
+    }
+    .platform-toggle button.active-poly { background: rgba(0,255,163,0.12); color: var(--mint); }
+    .platform-toggle button.active-kalshi { background: rgba(88,166,255,0.1); color: #58a6ff; }
+
+    .kalshi-info {
+      max-width: 500px; text-align: center; color: var(--muted); font-size: 13px;
+      line-height: 1.6; background: rgba(88,166,255,0.05); border: 1px solid rgba(88,166,255,0.15);
+      border-radius: 10px; padding: 14px 18px; margin-bottom: 20px; display: none;
+    }
 
     .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
     .stat-box { background: var(--bg3); padding: 16px; border-radius: 12px; text-align: center; }
@@ -113,13 +134,23 @@
   <h1>Whale Wallet Analyzer</h1>
   <p class="sub">Check exactly how accurate any prediction market wallet is. See their all-time ROI, win rate, and biggest historic wins instantly.</p>
 
+  <div class="platform-toggle">
+    <button id="btn-poly" class="active-poly" onclick="setPlatform('polymarket')">🔵 Polymarket</button>
+    <button id="btn-kalshi" onclick="setPlatform('kalshi')">⚡ Kalshi</button>
+  </div>
+
+  <div id="kalshi-info" class="kalshi-info">
+    Kalshi is a regulated centralized exchange — trader identities are private by law.
+    You will appear here automatically if you have placed a trade <strong>over $5,000</strong> on Kalshi that our whale tracker detected.
+  </div>
+
   <div class="search-box">
-    <input type="text" id="wallet-input" placeholder="Enter Kalshi/Polymarket address or handle..." autocomplete="off" />
+    <input type="text" id="wallet-input" placeholder="Enter Polymarket username or wallet address..." autocomplete="off" />
     <button onclick="analyzeWallet()">Grade</button>
   </div>
 
-  <div id="loading">Querying Blockchain & Database...</div>
-  <div id="error-msg">Wallet not found or no resolved trades recorded.</div>
+  <div id="loading">Querying Blockchain &amp; Database...</div>
+  <div id="error-msg"></div>
 
   <!-- THE ARTIFACT -->
   <div class="trade-card" id="artifact">

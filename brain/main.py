@@ -1110,7 +1110,7 @@ async def trigger_remote_video_test():
 
 # -- Top of Funnel Marketing API ---------------------------------------------
 @app.get('/api/analyze-wallet')
-async def analyze_wallet(query: str):
+async def analyze_wallet(query: str, platform: str = "polymarket"):
     """
     Public endpoint for the Whale Wallet Analyzer.
     No auth required. Used to generate viral Share Cards.
@@ -1129,6 +1129,8 @@ async def analyze_wallet(query: str):
     q = query.strip()
     if not q:
         raise HTTPException(400, 'Query cannot be empty.')
+    is_kalshi = platform.lower() == 'kalshi'
+
 
     try:
         # Step 1: Redis scan for recent whale match
@@ -1163,6 +1165,15 @@ async def analyze_wallet(query: str):
                                total_trades, total_volume_usd
                         FROM wallets WHERE wallet_address = %s LIMIT 1;
                     """, (resolved_wallet,))
+                elif is_kalshi:
+                    # Kalshi: search by handle with source filter
+                    cur.execute("""
+                        SELECT wallet_address, handle, win_rate, roi_all_time,
+                               total_trades, total_volume_usd
+                        FROM wallets
+                        WHERE source = 'KALSHI' AND handle ILIKE %s
+                        ORDER BY last_seen DESC LIMIT 1;
+                    """, ("%" + q + "%",))
                 else:
                     cur.execute("""
                         SELECT wallet_address, handle, win_rate, roi_all_time,
@@ -1186,8 +1197,9 @@ async def analyze_wallet(query: str):
             (q if q.startswith('0x') and len(q) >= 40 else None)
         )
 
-        if not target_wallet:
+        if not target_wallet and not is_kalshi:
             # Username query - resolve server-side via Polymarket leaderboard API
+            # NOTE: Kalshi is a centralized exchange — no public username lookup API exists
             try:
                 pm_url = (
                     "https://data-api.polymarket.com/v1/leaderboard"
@@ -1210,7 +1222,8 @@ async def analyze_wallet(query: str):
                 log.warning("[Analyzer] PM username resolution failed for '{}': {}".format(q, e))
 
         # Step 4: X-Ray - fetch full activity/position history for resolved wallet
-        if target_wallet:
+        # X-Ray uses data-api.polymarket.com — only relevant for Polymarket wallets
+        if target_wallet and not is_kalshi:
             try:
                 import sys as _sys, os as _os
                 tools_path = _os.path.join(_os.path.dirname(__file__), 'tools')
@@ -1299,6 +1312,8 @@ async def analyze_wallet(query: str):
                 'best_trades': best_trades,
             }
 
+        if is_kalshi:
+            raise HTTPException(404, 'Kalshi trader not found in our tracker. Kalshi does not publish public trade data — you will appear here automatically if you have placed a trade over $5,000 on Kalshi.')
         raise HTTPException(404, 'Wallet or user not found. Check the spelling or try their wallet address (0x...).')
 
     except HTTPException:

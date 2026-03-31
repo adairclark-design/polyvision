@@ -2,6 +2,33 @@ const BRAIN_URL = window.location.hostname === 'localhost' || window.location.ho
   ? 'http://localhost:8000/api'
   : 'https://polyvision-production.up.railway.app/api';
 
+let currentPlatform = 'polymarket';
+
+function setPlatform(platform) {
+  currentPlatform = platform;
+  const input = document.getElementById('wallet-input');
+  const kalshiInfo = document.getElementById('kalshi-info');
+  const btnPoly = document.getElementById('btn-poly');
+  const btnKalshi = document.getElementById('btn-kalshi');
+
+  if (platform === 'kalshi') {
+    btnPoly.className = '';
+    btnKalshi.className = 'active-kalshi';
+    input.placeholder = 'Enter the handle shown on your Kalshi trades...';
+    kalshiInfo.style.display = 'block';
+  } else {
+    btnPoly.className = 'active-poly';
+    btnKalshi.className = '';
+    input.placeholder = 'Enter Polymarket username or wallet address...';
+    kalshiInfo.style.display = 'none';
+  }
+
+  // Clear any previous results when switching
+  document.getElementById('artifact').style.display = 'none';
+  document.getElementById('action-buttons').style.display = 'none';
+  document.getElementById('error-msg').style.display = 'none';
+}
+
 async function analyzeWallet() {
   const input = document.getElementById('wallet-input').value.trim();
   if (!input) return;
@@ -19,37 +46,19 @@ async function analyzeWallet() {
   load.style.display = 'block';
 
   try {
-    let targetQuery = input;
-    let res = await fetch(`${BRAIN_URL}/analyze-wallet?query=${encodeURIComponent(targetQuery)}`);
-    
-    // If backend doesn't find the username/handle natively, use Polymarket API as a historical fallback proxy
-    if (!res.ok && res.status === 404 && !input.startsWith('0x')) {
-      try {
-        const pmRes = await fetch(`https://gamma-api.polymarket.com/profiles?username=${encodeURIComponent(input)}`);
-        if (pmRes.ok) {
-          const pmData = await pmRes.json();
-          const pf = Array.isArray(pmData) ? pmData[0] : pmData;
-          if (pf && pf.proxyWallet) {
-            targetQuery = pf.proxyWallet;
-            res = await fetch(`${BRAIN_URL}/analyze-wallet?query=${encodeURIComponent(targetQuery)}`);
-          }
-        }
-      } catch (proxyErr) {
-        console.warn('Proxy fallback failed:', proxyErr);
-      }
-    }
+    const url = `${BRAIN_URL}/analyze-wallet?query=${encodeURIComponent(input)}&platform=${currentPlatform}`;
+    let res = await fetch(url);
+
+    // Polymarket-only fallback: if backend doesn't find a username and it's not a 0x address,
+    // the backend now handles resolution server-side via the Polymarket leaderboard API.
+    // No client-side Gamma API proxy needed.
 
     if (!res.ok) {
-      throw new Error("Wallet not found or no historical data available.");
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || 'Wallet not found or no historical data available.');
     }
-    
+
     const data = await res.json();
-    
-    // If the proxy succeeded, replace the backend's generated fake handle with the real searched username
-    if (targetQuery !== input && data.handle) {
-      data.handle = input;
-    }
-    
     renderArtifact(data);
 
     load.style.display = 'none';
@@ -57,7 +66,7 @@ async function analyzeWallet() {
     actions.style.display = 'flex';
   } catch (e) {
     load.style.display = 'none';
-    err.textContent = e.message || "Failed to analyze wallet.";
+    err.textContent = e.message || 'Failed to analyze wallet.';
     err.style.display = 'block';
   } finally {
     btn.disabled = false;
@@ -67,18 +76,25 @@ async function analyzeWallet() {
 function renderArtifact(data) {
   document.getElementById('lbl-handle').textContent = data.handle || 'Unknown Whale';
   document.getElementById('lbl-address').textContent = data.wallet_address || '';
-  document.getElementById('lbl-source').textContent = (data.source || 'POLYGON').toUpperCase();
+
+  // Source badge — Kalshi gets blue, Polymarket gets mint
+  const sourceBadge = document.getElementById('lbl-source');
+  const src = (data.source || 'POLYMARKET').toUpperCase();
+  sourceBadge.textContent = src;
+  sourceBadge.className = src.includes('KALSHI') ? 'source-badge kalshi' : 'source-badge polymarket';
 
   // Win Rate
   const wr = data.win_rate;
   const wrEl = document.getElementById('lbl-winrate');
-  wrEl.textContent = `${(wr * 100).toFixed(0)}%`;
+  const wrPct = (wr * 100);
+  wrEl.textContent = wrPct >= 99.5 ? '99%+' : `${wrPct.toFixed(0)}%`;
   wrEl.className = wr < 0.5 ? 'stat-val negative' : 'stat-val';
 
   // ROI
   const roi = data.roi_all_time;
   const roiEl = document.getElementById('lbl-roi');
-  roiEl.textContent = `${roi > 0 ? '+' : ''}${(roi * 100).toFixed(1)}%`;
+  const roiPct = (roi * 100);
+  roiEl.textContent = roiPct >= 99.5 ? '+99%+' : `${roi > 0 ? '+' : ''}${roiPct.toFixed(1)}%`;
   roiEl.className = roi < 0 ? 'stat-val negative' : 'stat-val';
 
   // Volume
@@ -95,15 +111,15 @@ function renderArtifact(data) {
     data.best_trades.forEach(t => {
       const el = document.createElement('div');
       el.className = 'trade-item';
-      
+
       const title = document.createElement('div');
       title.className = 'trade-title';
       title.textContent = `[${t.outcome}] ${t.market_title}`;
-      
+
       const profit = document.createElement('div');
       profit.className = 'trade-profit';
       profit.textContent = `+$${Math.round(t.profit).toLocaleString()}`;
-      
+
       el.appendChild(title);
       el.appendChild(profit);
       body.appendChild(el);
@@ -114,15 +130,15 @@ function renderArtifact(data) {
 async function downloadArtifact() {
   const artifact = document.getElementById('artifact');
   const btn = document.querySelector('.btn-share');
-  
+
   try {
     const originalText = btn.textContent;
     btn.textContent = '📸 Generating...';
     btn.disabled = true;
 
     const canvas = await html2canvas(artifact, {
-      backgroundColor: '#161b22', // Match --bg2
-      scale: 2, // High-res
+      backgroundColor: '#161b22',
+      scale: 2,
       useCORS: true
     });
 
