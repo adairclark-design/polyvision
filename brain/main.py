@@ -1200,9 +1200,52 @@ async def analyze_wallet(query: str):
                         "best_trades": [],
                     }
 
-                if not user:
-                    raise HTTPException(404, "Wallet or user not found.")
+                db_trades_count = int(user['total_trades'] or 0) if user else 0
+                
+                if not user or db_trades_count < 15:
+                    # ── DYNAMIC FALLBACK: If query is a Polymarket address, fetch via API ──
+                    if q.startswith("0x") and len(q) == 42:
+                        try:
+                            import sys
+                            import os
+                            # Ensure tools module can be found if not already in path
+                            if "tools" not in sys.modules:
+                                sys.path.append(os.path.join(os.path.dirname(__file__), "tools"))
+                            from wallet_xray import get_xray
+                            
+                            xray_data = get_xray(q, force_refresh=False)
+                            if xray_data.get("all_time_vol", 0) > 0 or len(xray_data.get("history", [])) > 0:
+                                best_trades = []
+                                for p in xray_data.get("positions", []):
+                                    if p["status"] == "up" and p["net_pnl"] > 0:
+                                        best_trades.append({
+                                            "market_title": p["title"],
+                                            "outcome": p["outcome"],
+                                            "profit": p["net_pnl"]
+                                        })
+                                    if len(best_trades) >= 3:
+                                        break
+                                
+                                roi_all_time = 0.0
+                                if xray_data.get("all_time_vol", 0) > 0:
+                                    roi_all_time = xray_data["all_time_pnl"] / xray_data["all_time_vol"]
 
+                                return {
+                                    "wallet_address": q,
+                                    "handle": xray_data.get("handle") or q,
+                                    "source": "POLYMARKET (API DYNAMIC)",
+                                    "win_rate": float(xray_data.get("win_rate") or 0.0),
+                                    "roi_all_time": roi_all_time,
+                                    "total_trades": len(xray_data.get("history", [])),
+                                    "total_volume": float(xray_data.get("all_time_vol") or 0.0),
+                                    "best_trades": best_trades,
+                                }
+                        except Exception as e:
+                            log.error(f"[X-Ray Fallback] Failed for {q}: {e}")
+                            
+                    # If fallback fails or doesn't apply
+                    if not user:
+                        raise HTTPException(404, "Wallet or user not found.")
                 wallet_address = user['wallet_address']
                 # Use the real username from Redis if we have it
                 display_handle = resolved_handle or user['handle']
