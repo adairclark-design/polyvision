@@ -73,9 +73,29 @@ async function analyzeWallet() {
   }
 }
 
+function animateValue(obj, start, end, duration, formatFn) {
+  let startTimestamp = null;
+  const step = (timestamp) => {
+    if (!startTimestamp) startTimestamp = timestamp;
+    const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+    // Ease out quad
+    const easeProgress = progress * (2 - progress);
+    const value = easeProgress * (end - start) + start;
+    obj.innerHTML = formatFn(value);
+    if (progress < 1) {
+      window.requestAnimationFrame(step);
+    }
+  };
+  window.requestAnimationFrame(step);
+}
+
 function renderArtifact(data) {
-  document.getElementById('lbl-handle').textContent = data.handle || 'Unknown Whale';
+  const handle = data.handle || 'Unknown Whale';
+  document.getElementById('lbl-handle').textContent = handle;
   document.getElementById('lbl-address').textContent = data.wallet_address || '';
+  
+  // Inject Premium DiceBear Avatar
+  document.getElementById('img-avatar').src = `https://api.dicebear.com/9.x/shapes/svg?seed=${encodeURIComponent(handle)}&backgroundColor=transparent`;
 
   // Source badge — Kalshi gets blue, Polymarket gets mint
   const sourceBadge = document.getElementById('lbl-source');
@@ -87,19 +107,30 @@ function renderArtifact(data) {
   const wr = data.win_rate;
   const wrEl = document.getElementById('lbl-winrate');
   const wrPct = (wr * 100);
-  wrEl.textContent = wrPct >= 99.5 ? '99%+' : `${wrPct.toFixed(0)}%`;
   wrEl.className = wr < 0.5 ? 'stat-val negative' : 'stat-val';
+  if (wrPct >= 99.5) {
+    wrEl.textContent = '99%+';
+  } else {
+    animateValue(wrEl, 0, wrPct, 1200, (v) => `${v.toFixed(0)}%`);
+  }
 
   // ROI
   const roi = data.roi_all_time;
   const roiEl = document.getElementById('lbl-roi');
   const roiPct = (roi * 100);
-  roiEl.textContent = roiPct >= 99.5 ? '+99%+' : `${roi > 0 ? '+' : ''}${roiPct.toFixed(1)}%`;
   roiEl.className = roi < 0 ? 'stat-val negative' : 'stat-val';
+  if (roiPct >= 99.5) {
+    roiEl.textContent = '+99%+';
+  } else {
+    animateValue(roiEl, 0, roiPct, 1200, (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)}%`);
+  }
 
-  // Volume
-  document.getElementById('lbl-volume').textContent = `$${Math.round(data.total_volume).toLocaleString()}`;
-  document.getElementById('lbl-trades').textContent = data.total_trades.toLocaleString();
+  // Volume & Trades
+  const volEl = document.getElementById('lbl-volume');
+  animateValue(volEl, 0, Math.round(data.total_volume), 1200, (v) => `$${Math.round(v).toLocaleString()}`);
+  
+  const tradesEl = document.getElementById('lbl-trades');
+  animateValue(tradesEl, 0, data.total_trades, 1200, (v) => Math.round(v).toLocaleString());
 
   // Top Trades
   const body = document.getElementById('trades-list-body');
@@ -137,9 +168,10 @@ async function downloadArtifact() {
     btn.disabled = true;
 
     const canvas = await html2canvas(artifact, {
-      backgroundColor: '#161b22',
+      backgroundColor: '#050505',
       scale: 2,
-      useCORS: true
+      useCORS: true,
+      allowTaint: true
     });
 
     const dataUrl = canvas.toDataURL('image/png');
