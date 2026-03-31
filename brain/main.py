@@ -138,7 +138,7 @@ async def lifespan(app: FastAPI):
     # ── Morning Alpha Briefing Scheduler ─────────────────────────────────────
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
-        lambda: asyncio.get_event_loop().run_in_executor(None, _run_briefing),
+        _run_briefing,
         trigger=CronTrigger(hour=BRIEFING_HOUR, minute=0, timezone='America/New_York'),
         id='morning_briefing',
         name=f'Morning Alpha Briefing ({BRIEFING_HOUR:02d}:00 EST)',
@@ -146,7 +146,7 @@ async def lifespan(app: FastAPI):
     )
     # ── Daily Market Resolution Pass (06:00 EST, before the briefing) ──────────
     scheduler.add_job(
-        lambda: asyncio.get_event_loop().run_in_executor(None, run_resolution_pass),
+        run_resolution_pass,
         trigger=CronTrigger(hour=6, minute=0, timezone='America/New_York'),
         id='market_resolution',
         name='Daily Market Resolution Pass (06:00 EST)',
@@ -154,7 +154,7 @@ async def lifespan(app: FastAPI):
     )
     # ── Daily Price Impact Tracker (07:30 EST — checks 24h-old trades) ─────────
     scheduler.add_job(
-        lambda: asyncio.get_event_loop().run_in_executor(None, run_price_tracker_pass),
+        run_price_tracker_pass,
         trigger=CronTrigger(hour=7, minute=30, timezone='America/New_York'),
         id='price_tracker',
         name='Daily Price Impact Tracker (07:30 EST)',
@@ -162,7 +162,7 @@ async def lifespan(app: FastAPI):
     )
     # ── Trojan Horse Marketing CRM (Tuesdays & Thursdays at 10:00 EST) ─────────
     scheduler.add_job(
-        lambda: asyncio.get_event_loop().run_in_executor(None, _run_crm_pass),
+        _run_crm_pass,
         trigger=CronTrigger(day_of_week='tue,thu', hour=10, minute=0, timezone='America/New_York'),
         id='trojan_horse_crm',
         name='Trojan Horse Discord Marketing Reminder (Tues/Thu 10AM EST)',
@@ -170,7 +170,7 @@ async def lifespan(app: FastAPI):
     )
     # ── X (Twitter) Daily Recap Thread (19:00 EST) ─────────────────────────────
     scheduler.add_job(
-        lambda: asyncio.get_event_loop().run_in_executor(None, _run_daily_recap),
+        _run_daily_recap,
         trigger=CronTrigger(hour=19, minute=0, timezone='America/New_York'),
         id='twitter_daily_recap',
         name='X Daily Recap Thread (19:00 EST)',
