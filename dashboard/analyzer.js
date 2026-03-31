@@ -93,9 +93,6 @@ function renderArtifact(data) {
   const handle = data.handle || 'Unknown Whale';
   document.getElementById('lbl-handle').textContent = handle;
   document.getElementById('lbl-address').textContent = data.wallet_address || '';
-  
-  // Inject Premium DiceBear Avatar
-  document.getElementById('img-avatar').src = `https://api.dicebear.com/9.x/shapes/svg?seed=${encodeURIComponent(handle)}&backgroundColor=transparent`;
 
   // Source badge — Kalshi gets blue, Polymarket gets mint
   const sourceBadge = document.getElementById('lbl-source');
