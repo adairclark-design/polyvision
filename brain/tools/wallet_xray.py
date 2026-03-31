@@ -116,14 +116,16 @@ def _build_equity_curve(activity: list[dict]) -> list[dict]:
     for entry in sorted_activity:
         ts   = entry.get("timestamp", 0)
         typ  = entry.get("type", "")
+        side = entry.get("side", "")
         size = float(entry.get("usdcSize") or 0)
 
-        if typ in ("BUY",):
+        if typ == "BUY" or (typ == "TRADE" and side == "BUY"):
             cumulative -= size            # cash out
-        elif typ in ("REDEEM", "SELL"):
+        elif typ in ("REDEEM", "SELL") or (typ == "TRADE" and side == "SELL"):
             cumulative += size            # cash in
+            
         # MERGE, SPLIT, CONVERT — skip (non-cash events)
-        if typ in ("BUY", "REDEEM", "SELL"):
+        if typ in ("BUY", "REDEEM", "SELL") or (typ == "TRADE" and side in ("BUY", "SELL")):
             curve.append({
                 "ts":  ts,
                 "pnl": round(cumulative, 2),
@@ -144,9 +146,10 @@ def _build_positions(activity: list[dict]) -> list[dict]:
     for entry in activity:
         cid   = entry.get("conditionId", "")
         typ   = entry.get("type", "")
+        side  = entry.get("side", "")
         size  = float(entry.get("usdcSize") or 0)
         title = entry.get("title") or entry.get("slug") or cid[:12] + "…"
-        outcome = entry.get("outcome") or entry.get("side") or "?"
+        outcome = entry.get("outcome") or side or "?"
 
         if cid not in markets:
             markets[cid] = {
@@ -157,9 +160,9 @@ def _build_positions(activity: list[dict]) -> list[dict]:
                 "received":     0.0,   # USD received (REDEEMs/SELLs)
             }
 
-        if typ == "BUY":
+        if typ == "BUY" or (typ == "TRADE" and side == "BUY"):
             markets[cid]["spent"] += size
-        elif typ in ("REDEEM", "SELL"):
+        elif typ in ("REDEEM", "SELL") or (typ == "TRADE" and side == "SELL"):
             markets[cid]["received"] += size
 
     positions = []
