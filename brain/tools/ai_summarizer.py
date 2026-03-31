@@ -91,12 +91,12 @@ def build_prompt(payload: dict, extra_instruction: str = "", live_context: str =
         win_str = f"{win_rate:.0%}"
     roi_str = f"{roi_30d:+.1%}" if roi_30d is not None else "N/A"
 
-    # Format price as probability percentage (0.72 → 72%, 1.0 → ~100%)
+    # Format price as probability percentage
     if price is None or float(price) <= 0:
         price_str = "N/A"
-    elif float(price) >= 0.99:
-        price_str = "~100%"
-    elif float(price) <= 0.01:
+    elif float(price) >= 0.995:
+        price_str = "99%+"
+    elif float(price) <= 0.005:
         price_str = "<1%"
     else:
         price_str = f"{float(price):.0%}"

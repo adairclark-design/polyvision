@@ -67,6 +67,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS wallets (
         wallet_address   TEXT PRIMARY KEY,
         handle           TEXT NOT NULL,
+        source           TEXT DEFAULT 'POLYMARKET',
         total_trades     INTEGER DEFAULT 0,
         total_volume_usd FLOAT DEFAULT 0.0,
         winning_trades   INTEGER DEFAULT 0,
@@ -96,6 +97,12 @@ def init_db():
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(sql)
+            # ── Safe migration guard: add 'source' column to existing tables ──
+            # IF NOT EXISTS prevents errors on fresh DBs that already have the column.
+            cur.execute("""
+                ALTER TABLE wallets
+                ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'POLYMARKET';
+            """)
         conn.commit()
     log.info("Database tables initialized.")
 

@@ -69,6 +69,14 @@ def generate_thread_copy(trades: list) -> list:
         market = t.get('market_title', 'Unknown Market')
         outcome = t.get('outcome', 'Unknown')
         price = float(t.get('price', 0))
+        
+        if price >= 0.995:
+            price_str = "99%+"
+        elif price <= 0.005:
+            price_str = "<1%"
+        else:
+            price_str = f"{price:.0%}"
+            
         handle = t.get('handle', 'Unknown Whale')
         wallet = t.get('wallet_address', '')
         
@@ -77,7 +85,7 @@ def generate_thread_copy(trades: list) -> list:
             f"- Persona: {handle}\n"
             f"- Target Wallet Address: {wallet}\n"
             f"- Market: \"{market}\"\n"
-            f"- Prediction: {outcome} @ {price:.0%}\n"
+            f"- Prediction: {outcome} @ {price_str}\n"
             f"- Position Size: ${usd:,.0f} USD\n\n"
         )
         

@@ -121,7 +121,12 @@ def generate_card(payload: dict) -> io.BytesIO:
     
     tier_label = "👑  MEGA WHALE" if is_mega else ("🐋  WHALE" if is_whale else "🔵  STANDARD")
     usd_str    = _fmt_usd(usd_value)
-    pct_str    = f"@ {price:.0%}"
+    if price >= 0.995:
+        pct_str = "@ 99%+"
+    elif price <= 0.005:
+        pct_str = "@ <1%"
+    else:
+        pct_str = f"@ {price:.0%}"
 
     # ── Canvas setup ──────────────────────────────────────────────────────────
     img  = Image.new("RGBA", (W, H), (*BG_DARK, 255))

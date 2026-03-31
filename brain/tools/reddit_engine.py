@@ -69,7 +69,15 @@ def build_prompt(payload: dict) -> list[dict]:
     
     win_str = f"{win_rate:.0%}" if win_rate else "TBD"
     roi_str = f"{roi_30d:+.1%}" if roi_30d is not None else "N/A"
-    price_str = f"{float(price):.0%}" if price else "N/A"
+    price_val = float(price) if price else 0.0
+    if not price_val:
+        price_str = "N/A"
+    elif price_val >= 0.995:
+        price_str = "99%+"
+    elif price_val <= 0.005:
+        price_str = "<1%"
+    else:
+        price_str = f"{price_val:.0%}"
 
     user_msg = (
         f"Trader: {handle} (Win Rate: {win_str}, 30d ROI: {roi_str})\n"

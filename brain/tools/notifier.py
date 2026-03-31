@@ -169,9 +169,9 @@ def _fmt_price(price) -> str:
         return "N/A"
     if p <= 0:
         return "N/A"
-    if p >= 0.99:
-        return "~100%"
-    if p <= 0.01:
+    if p >= 0.995:
+        return "99%+"
+    if p <= 0.005:
         return "<1%"
     return f"{p:.0%}"
 

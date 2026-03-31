@@ -93,8 +93,13 @@ def format_tweet(payload: dict) -> str:
     # Whale emoji for big trades
     emoji = "🐋" if tier == "WHALE" or usd_value >= 50_000 else "🔵"
 
-    # Price as percentage
-    pct = f"{price:.0%}"
+    # Price as percentage (capped to prevent 100% display which looks artificial)
+    if price >= 0.995:
+        pct = "99%+"
+    elif price <= 0.005:
+        pct = "<1%"
+    else:
+        pct = f"{price:.0%}"
     
     # Format dollars nicely
     usd_str = f"${usd_value:,.0f}"
@@ -323,7 +328,7 @@ TEST_PAYLOAD = {
     "market_title":  "Will the Fed cut rates in June 2026?",
     "market_id":     "0xfed-rate-june-2026",
     "outcome":       "YES",
-    "price":         0.72,
+    "price":         1.00,
     "usd_value":     127_000.00,
     "source":        "POLYMARKET",
     "trader_handle": "GamblingIsAllYouNeed",
