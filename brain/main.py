@@ -1266,7 +1266,7 @@ async def analyze_wallet(query: str, platform: str = "polymarket"):
                     'source': 'POLYMARKET',
                     'win_rate': final_win_rate,
                     'roi_all_time': roi_all_time,
-                    'total_trades': len(xray.get('history', [])),
+                    'total_trades': xray.get('total_markets') or len(xray.get('history', [])),
                     'total_volume': final_vol,
                     'best_trades': best_trades,
                 }

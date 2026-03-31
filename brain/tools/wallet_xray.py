@@ -234,6 +234,7 @@ def get_xray(wallet: str, force_refresh: bool = False) -> dict:
         "all_time_pnl": round(float(stats.get("pnl") or 0), 2),
         "all_time_vol": round(float(stats.get("vol") or 0), 2),
         "win_rate":     round(calculated_wr if calculated_wr > 0 else float(stats.get("winRate") or 0), 4),
+        "total_markets": total_markets,
         "positions":    positions[:30],       # top 30 markets
         "equity_curve": equity_curve[-100:],  # last 100 data points
         "history":      activity[:50],        # last 50 raw trades
