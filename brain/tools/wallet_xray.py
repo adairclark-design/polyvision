@@ -82,6 +82,26 @@ def _fetch_wallet_stats(wallet: str) -> dict:
     return {}
 
 
+def _fetch_positions(wallet: str) -> list[dict]:
+    """
+    Fetches exact active/closed positions from the positions endpoint.
+    This provides accurate cashPnl and curPrice for empirical win rate logic.
+    """
+    try:
+        resp = requests.get(
+            f"{DATA_API}/positions",
+            params={"user": wallet},
+            timeout=TIMEOUT,
+        )
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        return data if isinstance(data, list) else data.get("data", [])
+    except Exception as e:
+        log.warning(f"Positions fetch failed for {wallet}: {e}")
+        return []
+
+
 # ── Processors ────────────────────────────────────────────────────────────────
 
 def _build_equity_curve(activity: list[dict]) -> list[dict]:
@@ -179,10 +199,28 @@ def get_xray(wallet: str, force_refresh: bool = False) -> dict:
                 pass
 
     log.info(f"Fetching X-Ray for {wallet[:10]}…")
-    activity     = _fetch_activity(wallet, limit=100)
+    # Fetch 1000 activity rows to get a true all-time historical picture,
+    # otherwise old winning trades drop out of the win rate calculation.
+    activity     = _fetch_activity(wallet, limit=1000)
     stats        = _fetch_wallet_stats(wallet)
+    raw_pos      = _fetch_positions(wallet)
     equity_curve = _build_equity_curve(activity)
     positions    = _build_positions(activity)
+
+    # Calculate empirical win_rate by merging BOTH the historical activity and the new positions API.
+    # The /positions API drops old realized wins, and the /activity API can paginate out active bets.
+    # Therefore, we merge both to find the true Total Markets & Total Wins.
+    historical_wins = [p for p in positions if p.get("net_pnl", 0) > 0]
+    active_wins = [p for p in raw_pos if float(p.get("cashPnl", 0)) > 0]
+    
+    total_wins = len(set(x for x in (p.get("condition_id") for p in historical_wins) if x).union(x for x in (p.get("conditionId") for p in active_wins) if x))
+    
+    # Get total unique markets they traded over their lifetime across both APIs
+    activity_markets = set(x for x in (p.get("condition_id") for p in positions) if x)
+    position_markets = set(x for x in (p.get("conditionId") for p in raw_pos) if x)
+    total_markets = len(activity_markets.union(position_markets))
+    
+    calculated_wr = (total_wins / total_markets) if total_markets > 0 else 0.0
 
     handle = (
         stats.get("userName") or stats.get("name") or
@@ -195,7 +233,7 @@ def get_xray(wallet: str, force_refresh: bool = False) -> dict:
         "handle":       handle,
         "all_time_pnl": round(float(stats.get("pnl") or 0), 2),
         "all_time_vol": round(float(stats.get("vol") or 0), 2),
-        "win_rate":     round(float(stats.get("winRate") or 0), 4),
+        "win_rate":     round(calculated_wr if calculated_wr > 0 else float(stats.get("winRate") or 0), 4),
         "positions":    positions[:30],       # top 30 markets
         "equity_curve": equity_curve[-100:],  # last 100 data points
         "history":      activity[:50],        # last 50 raw trades
