@@ -1107,19 +1107,21 @@ async def trigger_remote_video_test():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-# ── Top of Funnel Marketing API ──────────────────────────────────────────────
+
+# -- Top of Funnel Marketing API ---------------------------------------------
 @app.get('/api/analyze-wallet')
 async def analyze_wallet(query: str):
     """
-    Public endpoint for the Free Top-of-Funnel Whale Analyzer Tool.
-    Requires no auth. Used to generate viral Share Cards.
+    Public endpoint for the Whale Wallet Analyzer.
+    No auth required. Used to generate viral Share Cards.
 
-    Lookup strategy (ordered by priority):
-    1. Redis cache scan — search last 500 alerts for matching trader_handle (real username)
-       → resolves username → wallet_address for DB lookup
-    2. PostgreSQL wallets table — by exact wallet_address OR handle ILIKE
-    3. If wallet found in DB, aggregate live stats from the alerts Redis cache
-       (since trades table may be sparse; Redis has all recent trade data)
+    Resolution strategy (4 steps):
+    1. Redis cache scan - last 500 alerts for matching trader_handle
+    2. PostgreSQL wallets table - for tracked whale addresses
+    3. Polymarket Data-API server-side username resolution
+       Uses: data-api.polymarket.com/v1/leaderboard?userName=<query>
+       Resolves ANY registered Polymarket username to a wallet. No auth needed.
+    4. X-Ray build - fetches full historical stats via wallet_xray
     """
     if not DATABASE_URL:
         raise HTTPException(503, 'Database not configured.')
@@ -1129,9 +1131,9 @@ async def analyze_wallet(query: str):
         raise HTTPException(400, 'Query cannot be empty.')
 
     try:
-        # ── Step 1: Redis scan for real username match ────────────────────────
-        resolved_wallet: str | None = None
-        resolved_handle: str | None = None
+        # Step 1: Redis scan for recent whale match
+        resolved_wallet = None
+        resolved_handle = None
 
         raw_events = await redis_client.zrevrange(CACHE_KEY, 0, 499)
         events = []
@@ -1141,7 +1143,6 @@ async def analyze_wallet(query: str):
             except Exception:
                 pass
 
-        # Search for matching trader_handle (case-insensitive) or wallet address
         for ev in events:
             ev_handle = ev.get('trader_handle', '')
             ev_wallet = ev.get('wallet_address', '')
@@ -1152,19 +1153,15 @@ async def analyze_wallet(query: str):
                 resolved_handle = ev_handle
                 break
 
-        # ── Step 2: PostgreSQL lookup ─────────────────────────────────────────
+        # Step 2: PostgreSQL lookup (whale tracker DB)
+        db_user = None
         with psycopg2.connect(DATABASE_URL, connect_timeout=5) as conn:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-
-                # If Redis resolved a wallet address, query by exact address
-                # Otherwise fall back to ILIKE search on handle or address
                 if resolved_wallet:
                     cur.execute("""
                         SELECT wallet_address, handle, win_rate, roi_all_time,
                                total_trades, total_volume_usd
-                        FROM wallets
-                        WHERE wallet_address = %s
-                        LIMIT 1;
+                        FROM wallets WHERE wallet_address = %s LIMIT 1;
                     """, (resolved_wallet,))
                 else:
                     cur.execute("""
@@ -1172,134 +1169,141 @@ async def analyze_wallet(query: str):
                                total_trades, total_volume_usd
                         FROM wallets
                         WHERE wallet_address ILIKE %s OR handle ILIKE %s
-                        ORDER BY last_seen DESC
-                        LIMIT 1;
-                    """, (q, f"%{q}%"))
+                        ORDER BY last_seen DESC LIMIT 1;
+                    """, (q, "%" + q + "%"))
+                db_user = cur.fetchone()
 
-                user = cur.fetchone()
+        # Step 3: Server-side Polymarket username resolution
+        # Proven: data-api.polymarket.com/v1/leaderboard?userName=<name>
+        # Returns proxyWallet, vol, pnl for ANY Polymarket user. No auth needed.
+        pm_wallet = None
+        pm_handle = None
+        pm_vol = 0.0
+        pm_pnl = 0.0
 
-                # If we found a wallet via Redis but it's somehow not in DB yet
-                # (e.g. whale_profiler hasn't run for it), build a synthetic row
-                # from the Redis alert data directly
-                if not user and resolved_wallet:
-                    # Aggregate stats directly from Redis events
-                    matching = [e for e in events
-                                if e.get('wallet_address', '').lower() == resolved_wallet.lower()]
-                    total_volume = sum(float(e.get('usd_value', 0)) for e in matching)
+        target_wallet = (
+            resolved_wallet or
+            (q if q.startswith('0x') and len(q) >= 40 else None)
+        )
 
-                    # Use the most recent alert's profiler data for win_rate / roi
-                    latest = matching[0] if matching else {}
-                    return {
-                        "wallet_address": resolved_wallet,
-                        "handle": resolved_handle or q,
-                        "source": latest.get('source', 'POLYMARKET'),
-                        "win_rate": float(latest.get('wallet_win_rate') or 0.0),
-                        "roi_all_time": float(latest.get('wallet_roi_30d') or 0.0),
-                        "total_trades": int(latest.get('wallet_total_trades') or len(matching)),
-                        "total_volume": float(latest.get('wallet_total_volume') or total_volume),
-                        "best_trades": [],
-                    }
+        if not target_wallet:
+            # Username query - resolve server-side via Polymarket leaderboard API
+            try:
+                pm_url = (
+                    "https://data-api.polymarket.com/v1/leaderboard"
+                    "?userName=" + q + "&timePeriod=ALL&orderBy=PNL&limit=1"
+                )
+                async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+                    pm_resp = await client.get(pm_url, headers={"User-Agent": "Mozilla/5.0"})
+                if pm_resp.status_code == 200:
+                    pm_data = pm_resp.json()
+                    if pm_data and isinstance(pm_data, list) and len(pm_data) > 0:
+                        row = pm_data[0]
+                        pm_wallet = row.get('proxyWallet', '')
+                        pm_handle = row.get('userName', q)
+                        pm_vol = float(row.get('vol') or 0)
+                        pm_pnl = float(row.get('pnl') or 0)
+                        if pm_wallet:
+                            target_wallet = pm_wallet
+                            log.info("[Analyzer] Resolved '{}' -> {} via Polymarket API".format(q, pm_wallet))
+            except Exception as e:
+                log.warning("[Analyzer] PM username resolution failed for '{}': {}".format(q, e))
 
-                db_trades_count = int(user['total_trades'] or 0) if user else 0
-                
-                if not user or db_trades_count < 15:
-                    # ── DYNAMIC FALLBACK: If query is a Polymarket address, fetch via API ──
-                    if q.startswith("0x") and len(q) == 42:
-                        try:
-                            import sys
-                            import os
-                            # Ensure tools module can be found if not already in path
-                            if "tools" not in sys.modules:
-                                sys.path.append(os.path.join(os.path.dirname(__file__), "tools"))
-                            from wallet_xray import get_xray
-                            
-                            xray_data = get_xray(q, force_refresh=False)
-                            if xray_data.get("all_time_vol", 0) > 0 or len(xray_data.get("history", [])) > 0:
-                                best_trades = []
-                                for p in xray_data.get("positions", []):
-                                    if p["status"] == "up" and p["net_pnl"] > 0:
-                                        best_trades.append({
-                                            "market_title": p["title"],
-                                            "outcome": p["outcome"],
-                                            "profit": p["net_pnl"]
-                                        })
-                                    if len(best_trades) >= 3:
-                                        break
-                                
-                                roi_all_time = 0.0
-                                if xray_data.get("all_time_vol", 0) > 0:
-                                    roi_all_time = xray_data["all_time_pnl"] / xray_data["all_time_vol"]
+        # Step 4: X-Ray - fetch full activity/position history for resolved wallet
+        if target_wallet:
+            try:
+                import sys as _sys, os as _os
+                tools_path = _os.path.join(_os.path.dirname(__file__), 'tools')
+                if tools_path not in _sys.path:
+                    _sys.path.insert(0, tools_path)
+                from wallet_xray import get_xray
 
-                                return {
-                                    "wallet_address": q,
-                                    "handle": xray_data.get("handle") or q,
-                                    "source": "POLYMARKET (API DYNAMIC)",
-                                    "win_rate": float(xray_data.get("win_rate") or 0.0),
-                                    "roi_all_time": roi_all_time,
-                                    "total_trades": len(xray_data.get("history", [])),
-                                    "total_volume": float(xray_data.get("all_time_vol") or 0.0),
-                                    "best_trades": best_trades,
-                                }
-                        except Exception as e:
-                            log.error(f"[X-Ray Fallback] Failed for {q}: {e}")
-                            
-                    # If fallback fails or doesn't apply
-                    if not user:
-                        raise HTTPException(404, "Wallet or user not found.")
-                wallet_address = user['wallet_address']
-                # Use the real username from Redis if we have it
-                display_handle = resolved_handle or user['handle']
+                xray = get_xray(target_wallet, force_refresh=False)
 
-                # ── Step 3: Enrich with live Redis trade stats ────────────────
-                # The trades table is sparse (only resolved positions tracked)
-                # so we cross-reference Redis for richer volume/trade counts
-                redis_matching = [e for e in events
-                                  if e.get('wallet_address', '').lower() == wallet_address.lower()]
+                # Top winning positions from activity
+                best_trades = []
+                for p in xray.get('positions', []):
+                    if p.get('status') == 'up' and p.get('net_pnl', 0) > 0:
+                        best_trades.append({
+                            'market_title': p.get('title', ''),
+                            'outcome': p.get('outcome', ''),
+                            'profit': p.get('net_pnl', 0),
+                        })
+                        if len(best_trades) >= 5:
+                            break
 
-                db_win_rate = float(user['win_rate'] or 0.0)
-                db_roi      = float(user['roi_all_time'] or 0.0)
-                db_trades   = int(user['total_trades'] or 0)
-                db_volume   = float(user['total_volume_usd'] or 0.0)
+                # Leaderboard API has the most accurate all-time vol/pnl
+                xray_vol = float(xray.get('all_time_vol') or 0)
+                xray_pnl = float(xray.get('all_time_pnl') or 0)
+                final_vol = max(xray_vol, pm_vol)
+                final_pnl = pm_pnl if (pm_vol > 0 and pm_vol >= xray_vol) else xray_pnl
+                roi_all_time = (final_pnl / final_vol) if final_vol > 0 else 0.0
 
-                # If Redis has more recent data prefer it for trade count / volume
-                if redis_matching:
-                    latest_alert = redis_matching[0]
-                    redis_trades = int(latest_alert.get('wallet_total_trades') or 0)
-                    redis_volume = float(latest_alert.get('wallet_total_volume') or 0)
-                    redis_wr     = float(latest_alert.get('wallet_win_rate') or 0)
-                    redis_roi    = float(latest_alert.get('wallet_roi_30d') or 0)
-
-                    # Take the higher of DB vs Redis since Redis has fresher data
-                    db_trades = max(db_trades, redis_trades)
-                    db_volume = max(db_volume, redis_volume)
-                    if redis_wr > 0:
-                        db_win_rate = redis_wr
-                    if redis_roi != 0:
-                        db_roi = redis_roi
-
-                # Fetch top 3 profitable resolved trades from DB
-                cur.execute("""
-                    SELECT market_title, outcome, size as profit
-                    FROM trades
-                    WHERE wallet_address = %s AND resolved = TRUE AND won = TRUE
-                    ORDER BY size DESC
-                    LIMIT 3;
-                """, (wallet_address,))
-                best_trades = cur.fetchall()
+                display_handle = (
+                    pm_handle or resolved_handle or
+                    xray.get('handle') or
+                    (db_user['handle'] if db_user else None) or q
+                )
+                db_wr = float(db_user['win_rate'] or 0) if db_user else 0.0
+                final_win_rate = db_wr if db_wr > 0 else float(xray.get('win_rate') or 0)
 
                 return {
-                    "wallet_address": wallet_address,
-                    "handle": display_handle,
-                    "source": "POLYMARKET",
-                    "win_rate": db_win_rate,
-                    "roi_all_time": db_roi,
-                    "total_trades": db_trades,
-                    "total_volume": db_volume,
-                    "best_trades": [dict(t) for t in best_trades],
+                    'wallet_address': target_wallet,
+                    'handle': display_handle,
+                    'source': 'POLYMARKET',
+                    'win_rate': final_win_rate,
+                    'roi_all_time': roi_all_time,
+                    'total_trades': len(xray.get('history', [])),
+                    'total_volume': final_vol,
+                    'best_trades': best_trades,
                 }
+
+            except Exception as e:
+                log.error('[Analyzer] X-Ray failed for {}: {}'.format(target_wallet, e), exc_info=True)
+                # Fall through to DB-only response below
+
+        # Fallback: DB-only response for tracked whales (if X-Ray failed or no target_wallet)
+        if db_user:
+            wallet_address = db_user['wallet_address']
+            display_handle = resolved_handle or db_user['handle']
+            redis_matching = [e for e in events
+                              if e.get('wallet_address', '').lower() == wallet_address.lower()]
+            db_win_rate = float(db_user['win_rate'] or 0.0)
+            db_roi = float(db_user['roi_all_time'] or 0.0)
+            db_trades = int(db_user['total_trades'] or 0)
+            db_volume = float(db_user['total_volume_usd'] or 0.0)
+            if redis_matching:
+                la = redis_matching[0]
+                db_trades = max(db_trades, int(la.get('wallet_total_trades') or 0))
+                db_volume = max(db_volume, float(la.get('wallet_total_volume') or 0))
+                if float(la.get('wallet_win_rate') or 0) > 0:
+                    db_win_rate = float(la['wallet_win_rate'])
+                if float(la.get('wallet_roi_30d') or 0) != 0:
+                    db_roi = float(la['wallet_roi_30d'])
+            with psycopg2.connect(DATABASE_URL, connect_timeout=5) as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                    cur.execute("""
+                        SELECT market_title, outcome, size as profit FROM trades
+                        WHERE wallet_address = %s AND resolved = TRUE AND won = TRUE
+                        ORDER BY size DESC LIMIT 5;
+                    """, (wallet_address,))
+                    best_trades = [dict(t) for t in cur.fetchall()]
+            return {
+                'wallet_address': wallet_address,
+                'handle': display_handle,
+                'source': 'POLYMARKET',
+                'win_rate': db_win_rate,
+                'roi_all_time': db_roi,
+                'total_trades': db_trades,
+                'total_volume': db_volume,
+                'best_trades': best_trades,
+            }
+
+        raise HTTPException(404, 'Wallet or user not found. Check the spelling or try their wallet address (0x...).')
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f'/api/analyze-wallet failed: {e}', exc_info=True)
-        raise HTTPException(500, "Internal Server Error")
+        log.error('/api/analyze-wallet failed: {}'.format(e), exc_info=True)
+        raise HTTPException(500, 'Internal Server Error')
+
