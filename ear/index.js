@@ -156,6 +156,13 @@ async function catchUpViaRest() {
             const tradeId = raw.transactionHash || raw.id || `${raw.timestamp}-${raw.proxyWallet}`;
             if (!(await isNewTrade(tradeId))) continue;   // already processed
 
+            // Polymarket API returns `name` as a raw wallet address string when
+            // the user has no real display name (e.g. "0x5f39d698C8B1f2efad...").
+            // We must treat those as empty so the Brain falls through to the
+            // pseudonym, and ultimately the synthetic hash handle.
+            const rawName = raw.name || '';
+            const cleanName = rawName.startsWith('0x') ? '' : rawName;
+
             const event = {
                 id:           tradeId,
                 market_id:    raw.conditionId || '',
@@ -171,7 +178,7 @@ async function catchUpViaRest() {
                     ? new Date(raw.timestamp * 1000).toISOString()
                     : new Date().toISOString(),
                 trader_pseudonym: raw.pseudonym || '',
-                trader_name:      raw.name || '',
+                trader_name:      cleanName,
             };
 
             await forwardToBrain(event);
