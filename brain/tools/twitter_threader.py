@@ -143,6 +143,8 @@ def execute_twitter_thread(tweets: list, dry_run: bool = False):
         log.error("[Threader] Missing Twitter API credentials. Check environment variables.")
         return
 
+    published_tweet_ids = []
+
     try:
         import tweepy
         client = tweepy.Client(
@@ -157,6 +159,7 @@ def execute_twitter_thread(tweets: list, dry_run: bool = False):
         # Publish Hook (First Tweet)
         first_tweet = client.create_tweet(text=tweets[0])
         previous_tweet_id = first_tweet.data['id']
+        published_tweet_ids.append(previous_tweet_id)
         log.info(f"[Threader] Successfully published Hook: {previous_tweet_id}")
         
         # Sequentially thread remaining tweets
@@ -164,12 +167,21 @@ def execute_twitter_thread(tweets: list, dry_run: bool = False):
             time.sleep(2) # Avoid aggressive API tripping
             reply = client.create_tweet(text=tweet_copy, in_reply_to_tweet_id=previous_tweet_id)
             previous_tweet_id = reply.data['id']
+            published_tweet_ids.append(previous_tweet_id)
             log.info(f"[Threader] Successfully threaded part {i}: {previous_tweet_id}")
             
         log.info("[Threader] thread executed flawlessly.")
 
     except Exception as e:
         log.error(f"[Threader] Tweepy encountered a critical error while threading: {e}")
+        if published_tweet_ids:
+            log.warning(f"[Threader] Initiating rollback. Deleting {len(published_tweet_ids)} orphaned tweets to maintain timeline integrity...")
+            for t_id in reversed(published_tweet_ids):
+                try:
+                    client.delete_tweet(t_id)
+                    log.info(f"[Threader] Rolled back tweet: {t_id}")
+                except Exception as del_e:
+                    log.error(f"[Threader] Failed to delete orphaned tweet {t_id} during rollback: {del_e}")
 
 def run_daily_recap(dry_run: bool = False):
     """Main Orchestrator: Fetches trades, generates thread, and posts entirely autonomously."""
