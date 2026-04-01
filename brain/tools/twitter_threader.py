@@ -117,9 +117,9 @@ def generate_thread_copy(trades: list) -> list:
             model="gpt-4o-mini",
             response_format={ "type": "json_object" },
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=650,
+            max_tokens=1800,  # 7 tweets × ~250 chars ≈ ~1750 chars. Old 650 cap truncated after tweet 1.
             temperature=0.7,
-            timeout=20,
+            timeout=30,
         )
         data = json.loads(resp.choices[0].message.content.strip())
         return data.get("tweets", [])
