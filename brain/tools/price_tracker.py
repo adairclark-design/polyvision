@@ -171,7 +171,7 @@ def update_wallet_avg_impact(conn, wallet_deltas: dict[str, list[float]]):
                 avg = sum(deltas) / len(deltas)
                 cur.execute("""
                     UPDATE wallets SET avg_price_impact = %s
-                    WHERE address = %s
+                    WHERE wallet_address = %s
                 """, (avg, wallet))
         conn.commit()
         log.info(f'Updated avg_price_impact for {len(wallet_deltas)} wallets.')
@@ -188,7 +188,7 @@ def get_top_impact_wallets(limit: int = 10) -> list[dict]:
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("""
-                SELECT address, handle, avg_price_impact, total_trades
+                SELECT wallet_address, handle, avg_price_impact, total_trades
                 FROM wallets
                 WHERE avg_price_impact IS NOT NULL
                 ORDER BY avg_price_impact DESC
@@ -223,6 +223,6 @@ if __name__ == '__main__':
         rows = get_top_impact_wallets(20)
         for r in rows:
             impact = r['avg_price_impact']
-            print(f"{r['handle'] or r['address'][:10]}: {'+' if impact >= 0 else ''}{impact*100:.1f}% avg 24h impact ({r['total_trades']} trades)")
+            print(f"{r['handle'] or r['wallet_address'][:10]}: {'+' if impact >= 0 else ''}{impact*100:.1f}% avg 24h impact ({r['total_trades']} trades)")
     else:
         parser.print_help()
