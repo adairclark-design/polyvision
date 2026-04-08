@@ -798,7 +798,7 @@ function buildEventCard(ev) {
         <div class="card-time">${timeAgo(ev.timestamp)}</div>
       </div>
       <div class="card-badges">
-        <span class="tier-badge ${ev.tier}">${ev.tier === 'WHALE' ? '🐋' : '🔵'} ${ev.tier}</span>
+        <span class="tier-badge ${ev.tier}">${ev.tier === 'WHALE' ? '<img src="/assets/whale_logo.png" style="height: 1em; vertical-align: middle; display: inline-block;" alt="">' : '🔵'} ${ev.tier}</span>
         <span class="source-badge ${(ev.source||'POLYMARKET').toLowerCase()}">${ev.source === 'KALSHI' ? 'KALSHI' : 'POLY'}</span>
       </div>
     </div>
@@ -910,7 +910,7 @@ function renderLeaderboard() {
   if (!ranked.length) {
     whaleCardsEl.innerHTML = `
       <div class="empty-state" style="padding:32px 16px">
-        <span class="empty-icon">🐋</span>
+        <span class="empty-icon"><img src="/assets/whale_logo.png" style="height: 1.2em; vertical-align: middle;" alt=""></span>
         <span>Whales appear here as they trade live. Stay tuned.</span>
       </div>`;
     return;
@@ -1106,7 +1106,7 @@ function connectLiveFeed() {
         const followedWhales = getFollowedWhales();
         if (isLive && ev.whale?.wallet && followedWhales.has(ev.whale.wallet)) {
           if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification(`🐋 ${ev.whale.handle} just traded!`, {
+            new Notification(`🟢 ${ev.whale.handle} just traded!`, {
               body: `${ev.outcome} $${ev.usdValue.toLocaleString('en-US', {maximumFractionDigits:0})} on "${ev.market.slice(0,60)}"`,
               icon: '/assets/icon-192.png',
               tag:  ev.id,   // deduplicates if the same alert fires twice
@@ -1229,7 +1229,7 @@ function showToast(ev) {
   const toast = document.createElement('div');
   toast.className = `toast ${isYes ? '' : 'no-toast'}`;
   toast.innerHTML = `
-    <div class="toast-title">🐋 ${ev.tier} ALERT</div>
+    <div class="toast-title">📡 ${ev.tier} ALERT</div>
     <div class="toast-subtitle">${ev.whale.handle} · ${ev.outcome} on "${ev.market.slice(0, 40)}..."</div>
     <div class="toast-amount" style="color:${isYes ? 'var(--mint)' : 'var(--rose)'}">${fmt(ev.usdValue)}</div>
   `;
@@ -1500,7 +1500,7 @@ window.openWhaleModal = function (whaleId, e) {
     <div class="modal-whale-top">
       ${whale.avatar
         ? `<img class="modal-avatar" src="${whale.avatar}" alt="${whale.handle}" />`
-        : `<div class="modal-avatar" style="display:flex;align-items:center;justify-content:center;font-size:32px;background:rgba(0,255,163,0.1);border-radius:50%">🐋</div>`}
+        : `<div class="modal-avatar" style="display:flex;align-items:center;justify-content:center;font-size:32px;background:rgba(0,255,163,0.1);border-radius:50%"><img src="/assets/whale_logo.png" style="height: 1.2em; vertical-align: middle;" alt=""></div>`}
       <div>
         <div class="modal-handle">${whale.handle}</div>
         <div class="modal-wallet">${whale.wallet ? whale.wallet.slice(0,12)+'…' : ''} · ${whale.dominantCategory}</div>
@@ -1593,7 +1593,7 @@ window.openTradeModal = function (eventId) {
           <div class="modal-handle">${whale.handle}</div>
           <div class="modal-wallet">${whale.wallet} · ${whale.dominantCategory}</div>
         </div>
-        <span class="tier-badge ${ev.tier}" style="margin-left:auto">${ev.tier === 'WHALE' ? '🐋' : '🔵'} ${ev.tier}</span>
+        <span class="tier-badge ${ev.tier}" style="margin-left:auto">${ev.tier === 'WHALE' ? '<img src="/assets/whale_logo.png" style="height: 1em; vertical-align: middle; display: inline-block;" alt="">' : '🔵'} ${ev.tier}</span>
       </div>
 
       <!-- ── This Trade ── -->
@@ -2005,7 +2005,7 @@ function renderMarkets() {
     const consensus = getWhaleConsensus(title);
     const consensusBadge = consensus
       ? `<div class="mc-consensus">
-           🐋 ${consensus.yes > 0 ? `<span style="color:var(--mint)">${consensus.yes} YES</span>` : ''}
+           <img src="/assets/whale_logo.png" style="height: 1em; vertical-align: middle;" alt=""> ${consensus.yes > 0 ? `<span style="color:var(--mint)">${consensus.yes} YES</span>` : ''}
            ${consensus.yes > 0 && consensus.no > 0 ? ' / ' : ''}
            ${consensus.no > 0 ? `<span style="color:var(--rose)">${consensus.no} NO</span>` : ''}
            <span style="color:var(--text-muted);font-size:10px"> from tracked whales</span>
@@ -2201,7 +2201,7 @@ async function initAuth() {
     if (overlay) {
       overlay.innerHTML = `
         <div style="text-align:center;color:#e6edf3;font-family:Inter,sans-serif">
-          <div style="font-size:3rem;margin-bottom:1rem">🐋</div>
+          <div style="font-size:3rem;margin-bottom:1rem"><img src="/assets/whale_logo.png" style="height: 1.2em; vertical-align: middle;" alt=""></div>
           <h2 style="margin:0 0 8px">PolyVision</h2>
           <p style="color:#8b949e;font-size:14px;margin-bottom:24px">Authentication unavailable. Please sign in to continue.</p>
           <a href="https://accounts.polyvision.app/sign-in?redirect_url=https%3A%2F%2Fpolyvision.app%2Fdashboard"
@@ -3025,7 +3025,7 @@ async function runWalletSearch(query) {
     content.innerHTML = `
       <div style="padding:8px 0">
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-          <div style="width:44px;height:44px;border-radius:50%;background:var(--bg-card);display:flex;align-items:center;justify-content:center;font-size:22px;border:2px solid var(--border)">🐋</div>
+          <div style="width:44px;height:44px;border-radius:50%;background:var(--bg-card);display:flex;align-items:center;justify-content:center;font-size:22px;border:2px solid var(--border)"><img src="/assets/whale_logo.png" style="height: 1.2em; vertical-align: middle;" alt=""></div>
           <div>
             <div style="font-size:18px;font-weight:800;color:var(--text-primary)">${profile.handle}</div>
             <div style="font-size:11px;color:var(--text-muted);font-family:var(--text-mono)">${shortW}</div>
@@ -3300,7 +3300,7 @@ function checkEventAgainstRules(ev) {
 
       // Browser push notification (fires if permission granted)
       if (Notification.permission === 'granted') {
-        new Notification(`🐋 PolyVision Alert`, {
+        new Notification(`📡 PolyVision Alert`, {
           body: `${ev.whale?.handle || 'Whale'} — $${Math.round(ev.usdValue).toLocaleString()} ${ev.outcome} on "${ev.market}"`,
           icon: '/favicon.ico',
         });
