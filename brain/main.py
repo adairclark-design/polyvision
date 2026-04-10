@@ -61,6 +61,9 @@ from market_resolver  import (
 )
 from trojan_horse_crm import run_crm_pass as _run_crm_pass
 from twitter_threader import run_daily_recap as _run_daily_recap
+from twitter_monitor   import run_monitor    as _run_twitter_monitor
+from twitter_news_jack import run_news_jack  as _run_twitter_news_jack
+from twitter_reply_agent import run_reply_agent as _run_reply_agent
 from subscriptions import (
     init_db        as init_subscriptions_db,
     is_pro, get_subscription, upsert_subscription, cancel_subscription,
@@ -176,13 +179,40 @@ async def lifespan(app: FastAPI):
         name='X Daily Recap Thread (19:00 EST)',
         replace_existing=True,
     )
-    
+    # ── X (Twitter) Auto-Reply Monitor (Every 10 minutes) ──────────────────────
+    scheduler.add_job(
+        _run_twitter_monitor,
+        trigger=CronTrigger(minute='*/10'),
+        id='twitter_monitor',
+        name='X Reply-Value Engine (Every 10 min)',
+        replace_existing=True,
+    )
+    # ── X (Twitter) News-Jacking Engine (Every 25 minutes) ─────────────────
+    scheduler.add_job(
+        _run_twitter_news_jack,
+        trigger=CronTrigger(minute='*/25'),
+        id='twitter_news_jack',
+        name='X News-Jacking Engine (Every 25 min)',
+        replace_existing=True,
+    )
+    # ── X Mention-Reply Agent (Every 15 minutes) ──────────────────────────────
+    scheduler.add_job(
+        _run_reply_agent,
+        trigger=CronTrigger(minute='*/15'),
+        id='twitter_reply_agent',
+        name='X Mention-Reply Agent (Every 15 min)',
+        replace_existing=True,
+    )
+
     scheduler.start()
     log.info(f'Briefing scheduler started — fires daily at {BRIEFING_HOUR:02d}:00 EST.')
     log.info('Market resolution cron scheduled — fires daily at 06:00 EST.')
     log.info('Price impact tracker cron scheduled — fires daily at 07:30 EST.')
     log.info('Trojan Horse CRM cron scheduled — fires Tue/Thu at 10:00 EST.')
     log.info('X (Twitter) Daily Thread scheduled — fires daily at 19:00 EST.')
+    log.info('X (Twitter) Auto-Reply Engine scheduled — fires every 10 min.')
+    log.info('X (Twitter) News-Jacking Engine scheduled — fires every 25 min.')
+    log.info('X (Twitter) Mention-Reply Agent scheduled — fires every 15 min.')
 
     yield
     scheduler.shutdown(wait=False)
@@ -274,6 +304,7 @@ def send_targeted_push(player_ids: list, title: str, body: str, url: str = 'http
             headers={
                 'Authorization': f'Basic {ONESIGNAL_API_KEY}',
                 'Content-Type':  'application/json',
+                'User-Agent':    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             },
             json={
                 'app_id':             ONESIGNAL_APP_ID,

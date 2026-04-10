@@ -20,3 +20,10 @@ redis>=5.0.0
 
 # ── Reporting (Phase 4 — Alpha PDF) ──────────────────────────────────────────
 reportlab>=4.2.0
+
+# ── X / Twitter Bot Engine ───────────────────────────────────────────────────
+tweepy>=4.14.0          # Twitter API v2 client (broadcaster, monitor, reply agent)
+feedparser>=6.0.11      # RSS ingestion for the News-Jacking engine
+
+# ── Image Generation (Card Generator) ────────────────────────────────────────
+Pillow>=10.3.0          # Headless PNG card rendering — no display required

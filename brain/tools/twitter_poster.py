@@ -73,7 +73,9 @@ def _credentials_set() -> bool:
 # ── Tweet Formatter ───────────────────────────────────────────────────────────
 def format_tweet(payload: dict) -> str:
     """
-    Build a dynamic, human-sounding tweet string (≤280 chars) from a WhaleAlertPayload.
+    Build a dynamic, human-sounding tweet string (≤280 chars) from a WhaleAlertPayload
+    using OpenAI to generate Visceral Copy, Pattern Interruption, and Tag & Bait strategy.
+    Falls back to a static template if OpenAI fails or is not configured.
     """
     usd_value   = float(payload.get("usd_value", 0))
     outcome     = payload.get("outcome", "YES")
@@ -82,18 +84,17 @@ def format_tweet(payload: dict) -> str:
     source      = payload.get("source", "POLYMARKET").upper()
     tier        = payload.get("alert_tier", "STANDARD")
 
-    # Platform label + hashtag
     if source == "KALSHI":
         platform   = "Kalshi"
         hashtags   = "#PredictionMarkets #Kalshi"
+        tags       = "@Kalshi"
     else:
         platform   = "Polymarket"
         hashtags   = "#PredictionMarkets #Polymarket"
+        tags       = "@Polymarket @unusual_whales"
 
-    # Whale emoji for big trades
     emoji = "🐋" if tier == "WHALE" or usd_value >= 50_000 else "🔵"
 
-    # Price as percentage (capped to prevent 100% display which looks artificial)
     if price >= 0.995:
         pct = "99%+"
     elif price <= 0.005:
@@ -101,96 +102,100 @@ def format_tweet(payload: dict) -> str:
     else:
         pct = f"{price:.0%}"
     
-    # Format dollars nicely
     usd_str = f"${usd_value:,.0f}"
 
-    templates = [
-        # 1 — Curiosity / "what do they know?" hook
-        "A trader just made a {usd} bet on {outcome} for '{market}' at {pct} to win on {platform}! What do they know that we don't? Want to get notified whenever a whale enters the market? Try out PolyVision and follow the money! {emoji}👇\n\npolyvision.app\n\n{hashtags}",
-
-        # 2 — Breaking alert style
-        "🚨 Whale Alert: Someone just dropped {usd} on {outcome} for '{market}' ({pct} probability) via {platform}. Are they hedging or do they have inside info? Catch moves like this in real-time with PolyVision before the market reacts ⚡️\n\npolyvision.app\n\n{hashtags}",
-
-        # 3 — Smart money / don't trade blind
-        "Millions are moving on {platform}... A {usd} position was just taken on '{market}' ({outcome} @ {pct}). Don't trade blind — see exactly what the smart money is doing. Track every whale live on PolyVision 🎯\n\npolyvision.app\n\n{hashtags}",
-
-        # 4 — Is smart money leading the charge?
-        "Just in: massive {usd} play on '{market}' betting {outcome} ({pct}). Is smart money leading the charge? Don't miss the next big shift on {platform}. Follow the whales and trade smarter with PolyVision. 🌊\n\npolyvision.app\n\n{hashtags}",
-
-        # 5 — Never be late
-        "🔥 Huge move on {platform}! A whale just bet {usd} that {outcome} happens for '{market}', buying in at {pct}. Want to know the second these trades happen? PolyVision gets you real-time alerts so you're never late.\n\npolyvision.app\n\n{hashtags}",
-
-        # 6 — What would you do?
-        "If someone dropped {usd} on {outcome} for '{market}' at {pct} on {platform}, what would you do — copy the trade, fade it, or just watch? PolyVision shows you every whale move in real-time so you can decide. {emoji}\n\npolyvision.app\n\n{hashtags}",
-
-        # 7 — Storytelling / most people never see it
-        "Picture this: a trader quietly places {usd} on {outcome} for '{market}' at {pct} odds on {platform}. Most people never see it. PolyVision users do. Be one of them. 👀\n\npolyvision.app\n\n{hashtags}",
-
-        # 8 — FOMO / odds shift before you know
-        "The smart money just moved. {usd} on {outcome} for '{market}' ({pct}) via {platform}. By the time most people see this, the odds will have shifted. Don't be last — PolyVision alerts you the moment it happens. ⚡\n\npolyvision.app\n\n{hashtags}",
-
-        # 9 — Analysis / market signal
-        "Market signal: {usd} entered {platform} on {outcome} for '{market}' at {pct}. Whether it's conviction or a hedge, someone powerful thinks they know something. See every move like this with PolyVision. 🔍\n\npolyvision.app\n\n{hashtags}",
-
-        # 10 — Contrarian / smartest or most expensive mistake
-        "Either this trader is the smartest person in the room, or they just made a very expensive mistake. {usd} on {outcome} for '{market}' at {pct} on {platform}. Which is it? Follow the money with PolyVision. 🤔\n\npolyvision.app\n\n{hashtags}",
-
-        # 11 — Conversational / conviction money
-        "Someone just quietly dropped {usd} on {outcome} for '{market}' at {pct} on {platform}. That's not a casual trade — that's conviction money. PolyVision surfaces moves like this before the news does. 🌊\n\npolyvision.app\n\n{hashtags}",
-
-        # 12 — Community / thousands already tracking
-        "The whales are active on {platform}. {usd} just landed on {outcome} for '{market}' ({pct}). Thousands of traders use PolyVision to see exactly where the smart money is going. Are you one of them? {emoji}\n\npolyvision.app\n\n{hashtags}",
-
-        # 13 — Urgency / these don't stay hidden long
-        "Right now, someone just placed {usd} on {outcome} for '{market}' on {platform} at {pct}. These opportunities don't stay hidden for long — get real-time whale alerts before the market moves. ⏰\n\npolyvision.app\n\n{hashtags}",
-
-        # 14 — Sarcastic / oh, nothing major
-        "Oh, nothing major. Just {usd} quietly betting {outcome} for '{market}' at {pct} on {platform}. Totally normal. 😅 Track every \"normal\" move like this live on PolyVision.\n\npolyvision.app\n\n{hashtags}",
-
-        # 15 — Missed it / while you scrolled
-        "While most people scrolled past their feed, a whale dropped {usd} on {outcome} for '{market}' ({pct}) on {platform}. PolyVision users got the alert instantly. Stop missing signals that matter. {emoji}\n\npolyvision.app\n\n{hashtags}",
-
-        # 16 — Why / we don't know their reasoning but we know the move
-        "Why would someone bet {usd} on {outcome} for '{market}' at {pct} on {platform}? We don't know their reasoning — but we know the move. Track every whale trade in real-time with PolyVision. 🔎\n\npolyvision.app\n\n{hashtags}",
-
-        # 17 — Aspirational / seat at the table
-        "This is how fortunes are made on {platform}: {usd} on {outcome} for '{market}' at {pct}. One massive bet, one massive conviction. Want to be in the room when it happens? PolyVision is your seat at the table. {emoji}\n\npolyvision.app\n\n{hashtags}",
-
-        # 18 — PolyVision flagged this / branded
-        "PolyVision just flagged this: {usd} on {outcome} for '{market}' at {pct} via {platform}. {emoji} Our users saw it the moment it happened. Want in on the next one?\n\npolyvision.app\n\n{hashtags}",
-
-        # 19 — Intelligence / this is what market intelligence looks like
-        "This is what market intelligence looks like: {usd} on {outcome} for '{market}' at {pct} on {platform}. Real money, real conviction. PolyVision tracks every move so you never trade in the dark. 📡\n\npolyvision.app\n\n{hashtags}",
-
-        # 20 — Edge / there are two types of traders
-        "There are two types of traders: those who see moves like this coming, and those who find out after. {usd} on {outcome} for '{market}' ({pct}) just hit {platform}. PolyVision puts you in the first group. {emoji}\n\npolyvision.app\n\n{hashtags}",
+    # ── 6 Adversarial Static Fallbacks ──────────────────────────────────────────
+    # Used when OpenAI is unavailable. Each is pre-written in the adversarial
+    # 'Smart Money vs Retail' voice so the fallback never looks like a boring alert.
+    ADVERSARIAL_FALLBACKS = [
+        (
+            f"{emoji} While retail traders were distracted by headlines, smart money quietly dropped "
+            f"{usd_str} on {outcome} for '{market}'. The market moves before you even hear about it.\n\n"
+            f"Track the whales before they disappear: polyvision.app\n\n{hashtags}"
+        ),
+        (
+            f"{emoji} {usd_str} on {outcome}. {platform} whale. {pct} conviction. "
+            f"Retail is always last to know — that's why they're always last to profit.\n\n"
+            f"Stop trading blind: polyvision.app\n\n{hashtags}"
+        ),
+        (
+            f"{emoji} Someone just deployed {usd_str} on {outcome} for '{market}' at {pct}. "
+            f"This isn't a rumor. This is a real position. The exit liquidity is whoever doesn't see it.\n\n"
+            f"polyvision.app\n\n{hashtags}"
+        ),
+        (
+            f"{emoji} A {platform} whale just put {usd_str} on '{market}' going {outcome}. "
+            f"Meanwhile, the mainstream is debating yesterday's news. "
+            f"Smart money doesn't wait for permission.\n\npolyvision.app\n\n{hashtags}"
+        ),
+        (
+            f"{emoji} {usd_str} position just opened on {outcome} @ {pct} in '{market}'. "
+            f"The whales aren't confused. Are you? "
+            f"Follow the money, not the noise: polyvision.app\n\n{hashtags}"
+        ),
+        (
+            f"{emoji} Insider or genius? A whale just bet {usd_str} on {outcome} for '{market}'. "
+            f"The market will answer that question eventually. "
+            f"Be ready before it does: polyvision.app\n\n{hashtags}"
+        ),
     ]
+    fallback_tweet = random.choice(ADVERSARIAL_FALLBACKS)
+    if len(fallback_tweet) > 280:
+        fallback_tweet = fallback_tweet[:276] + "..."
 
-    template = random.choice(templates)
-    
-    # Calculate how much space the template uses WITHOUT the market title
-    template_blank = template.format(
-        usd=usd_str, outcome=outcome, market="", pct=pct, 
-        platform=platform, emoji=emoji, hashtags=hashtags
-    )
-    
-    # Twitter hard limit is 280, but their API secretly counts URLs as 23 chars
-    # regardless of actual length, and emojis count as 2 chars. Our polyvision.app
-    # link is 14 chars, so that's a +9 hidden penalty. We use 255 to be perfectly safe.
-    chars_left = 255 - len(template_blank)
-    
-    # Truncate market if necessary
-    if len(market) > chars_left:
-        safe_market = market[:max(0, chars_left - 1)] + "…"
-    else:
-        safe_market = market
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+    if not OPENAI_API_KEY:
+        log.warning("[Twitter] OPENAI_API_KEY not set. Using adversarial fallback template.")
+        return fallback_tweet
 
-    tweet = template.format(
-        usd=usd_str, outcome=outcome, market=safe_market, pct=pct, 
-        platform=platform, emoji=emoji, hashtags=hashtags
-    )
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=OPENAI_API_KEY)
+        
+        hook_types = [
+            "Retail Exit Liquidity (Frame retail traders as the suckers being left holding the bag while this whale quietly rotates against them)",
+            "Insider Knowledge (Imply aggressively that this whale knows an industry secret that the general public and mainstream media do not)",
+            "Contrarian Mockery (Mock the current mainstream news narrative explicitly using this massive trade as proof that the media is wrong)",
+            "Market Predation (Suggest this whale is actively hunting and feasting on smaller retail traders who are trading purely on emotion)"
+        ]
+        chosen_hook = random.choice(hook_types)
 
-    return tweet
+        prompt = f"""
+We are tweeting a whale alert for a prediction market tracking application called PolyVision.
+Market: "{market}"
+Position: {outcome} @ {pct} probability
+Size: {usd_str}
+Platform: {platform}
+
+INSTRUCTIONS:
+1. Write ONE highly engaging tweet (max 180 characters) about this trade.
+2. Follow the Marketing Growth Skill principles: Frame the data as a highly aggressive Us vs Them argument ('Smart Money' vs 'Retail'). Use purely data-backed inflammatory takes. Let them know retail is about to get wiped out.
+3. PATTERN INTERRUPTION: Strictly use this adversarial hook style for this tweet: [{chosen_hook}].
+4. "TAG & BAIT" STRATEGY: Mention {tags} naturally to bait a reply or retweet.
+5. Do NOT include hyperlinks or hashtags. Do NOT use emojis at the start.
+6. Make it arrogant, urgent, and professional (A ruthless Wall Street predator's tone).
+"""
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=150,
+            temperature=0.7,
+            timeout=10,
+        )
+        ai_text = resp.choices[0].message.content.strip().strip('"')
+        
+        # Assemble final tweet
+        final_tweet = f"{emoji} {ai_text}\n\npolyvision.app\n\n{hashtags}"
+        
+        if len(final_tweet) > 280:
+            log.warning("[Twitter] LLM generated too long tweet. Using fallback.")
+            return fallback_tweet
+            
+        return final_tweet
+
+    except Exception as e:
+        log.error(f"[Twitter] LLM generation failed: {e}. Using fallback.")
+        return fallback_tweet
 
 
 # ── Redis Deduplication ───────────────────────────────────────────────────────
