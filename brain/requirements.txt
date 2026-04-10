@@ -14,3 +14,4 @@ resend>=0.7.0
 cryptography>=42.0.0
 tweepy>=4.14.0,<5.0.0
 Pillow>=10.0.0
+boto3>=1.30.0

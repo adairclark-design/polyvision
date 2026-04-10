@@ -114,28 +114,6 @@ except ImportError as _e:
     _generate_card = None
     log.warning(f"[Reddit] reddit_engine import failed: {_e}")
 
-# ── Cinematic & Real-World delivery ───────────────────────────────────────────
-try:
-    import sys as _sys
-    _tools_dir = os.path.dirname(os.path.abspath(__file__))
-    if _tools_dir not in _sys.path:
-        _sys.path.insert(0, _tools_dir)
-    from marketing_quota import throttle_video_generation
-
-    # execute_real_world resides on local desktop, handle its path securely
-    ag_root = "/Users/adairclark/Desktop/AntiGravity"
-    if ag_root not in _sys.path:
-        _sys.path.append(ag_root)
-    from execute_real_world import dispatch_video_alert
-
-    CINEMATIC_ENABLED = True
-    log.info("[Cinematic] Modules loaded — CINEMATIC_ENABLED=True")
-except ImportError as _e:
-    CINEMATIC_ENABLED = False
-    throttle_video_generation = None
-    dispatch_video_alert = None
-    log.warning(f"[Cinematic] imports failed, cinematic delivery disabled. Reason: {_e}")
-
 RATE_LIMIT_WHALE_TTL    = 300   # 5 minutes: one WHALE alert per market
 RATE_LIMIT_STANDARD_MAX = 10    # max STANDARD alerts per hour
 RATE_LIMIT_STANDARD_TTL = 3600
@@ -562,10 +540,13 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
                 results["reddit"] = "failed"
                 
     # ── PolyVision Cinematic Delivery ──────────────────────────────────────────
-    if CINEMATIC_ENABLED and usd_value >= 100000:  # Only spawn expensive videos for $100k+ trades
+    if usd_value >= 100000:  # Only spawn expensive videos for $100k+ trades
         try:
             # 1. Enforce strict mathematical daily quota limits securely
+            from .marketing_quota import throttle_video_generation
             if throttle_video_generation():
+                from .execute_real_world import dispatch_video_alert
+                
                 log.info(f"Triggering automated MP4 Generation pipeline for ${usd_value:,.0f} Whale Trade...")
                 # Fire the algorithm-optimized silent compilation native hook!
                 dispatch_video_alert(payload, include_music=False)
@@ -576,8 +557,6 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
         except Exception as e:
             log.error(f"[Cinematic] Engine error bridging VisionEdgeAI: {e}")
             results["cinematic"] = "failed"
-    elif usd_value >= 100000:
-        results["cinematic"] = "skipped_no_module"
             
     # ── Twitter/X auto-post ────────────────────────────────────────────────────
     if TWITTER_ENABLED:
