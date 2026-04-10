@@ -275,16 +275,32 @@ def format_telegram(payload: dict) -> str:
 
 # ── Senders ───────────────────────────────────────────────────────────────────
 def send_with_retry(label: str, fn) -> bool:
-    for attempt in range(2):
+    """Call fn() up to 3 times.
+    - On a Discord 429 rate-limit, reads the Retry-After header and waits
+      exactly as long as Discord requests before retrying.
+    - On any other error, waits 3 seconds before the next attempt.
+    """
+    for attempt in range(3):
         try:
             fn()
             log.info(f"✅ {label} delivery succeeded.")
             return True
         except Exception as e:
-            log.warning(f"{label} attempt {attempt+1} failed: {e}")
-            if attempt == 0:
-                time.sleep(3)
-    log.error(f"❌ {label} delivery failed after 2 attempts.")
+            err_str = str(e)
+            # Discord 429: honour the Retry-After header for precise backoff
+            retry_after = None
+            if "429" in err_str:
+                try:
+                    # requests HTTPError stores the response on the exception
+                    retry_after = float(e.response.headers.get("Retry-After", 2))
+                except Exception:
+                    retry_after = 2.0
+            wait = retry_after if retry_after is not None else 3
+            log.warning(f"{label} attempt {attempt+1} failed: {e}" +
+                        (f" — Rate limited, waiting {wait:.1f}s" if retry_after else ""))
+            if attempt < 2:
+                time.sleep(wait)
+    log.warning(f"❌ {label} delivery failed after 3 attempts.")
     return False
 
 
@@ -296,6 +312,7 @@ def send_onesignal(push: dict):
         headers={
             "Authorization": f"Basic {ONESIGNAL_API_KEY}",
             "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
         },
         json={
             "app_id":            ONESIGNAL_APP_ID,
@@ -315,7 +332,12 @@ def send_onesignal(push: dict):
                                       or "errors" in body.lower()):
             log.info(f"OneSignal: no active subscribers yet (this is normal for a new app). Response: {body}")
             return   # don't raise — treat as a soft skip, not a failure
-        log.error(f"OneSignal error {r.status_code}: {body}")
+            
+        if "<html" in body.lower() or "<!doctype html" in body.lower():
+            log.warning(f"OneSignal error {r.status_code}: Upstream HTML page returned (CDN edge block or outage)")
+        else:
+            log.warning(f"OneSignal error {r.status_code}: {body}")
+        
         r.raise_for_status()
 
 
@@ -323,19 +345,22 @@ def send_onesignal(push: dict):
 def send_discord(embed: dict, webhook_override: str = ""):
     """Send to Discord via webhook URL (preferred) or bot token.
     webhook_override allows posting to a secondary channel (e.g. premium whale alerts).
+    On a 429 rate-limit response, raises the HTTPError so send_with_retry can
+    read the Retry-After header and back off precisely.
     """
     url = webhook_override or DISCORD_WEBHOOK_URL
     if url:
-        # Wrap embed in a payload that overrides the bot display name + avatar
         payload = {
             "username":   "PolyVision Brain",
             "avatar_url": "https://polyvision.app/assets/icon-192.png",
             "embeds":     embed.get("embeds", [embed]) if "embeds" not in embed else embed["embeds"],
         }
-        # Pass through any top-level content field (e.g. @here mentions)
         if "content" in embed:
             payload["content"] = embed["content"]
         r = requests.post(url, json=payload, timeout=10)
+        if r.status_code == 429:
+            # Surface the full response so send_with_retry can read Retry-After
+            r.raise_for_status()
         r.raise_for_status()
         return
     if not DISCORD_BOT_TOKEN or not DISCORD_CHANNEL_ID:
@@ -514,8 +539,29 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
                 log.error(f"[Reddit] Engine error: {e}")
                 results["reddit"] = "failed"
                 
-
-
+    # ── PolyVision Cinematic Delivery ──────────────────────────────────────────
+    if usd_value >= 100000:  # Only spawn expensive videos for $100k+ trades
+        try:
+            # 1. Enforce strict mathematical daily quota limits securely
+            from marketing_quota import throttle_video_generation
+            if throttle_video_generation():
+                import sys
+                ag_root = "/Users/adairclark/Desktop/AntiGravity"
+                if ag_root not in sys.path:
+                    sys.path.append(ag_root)
+                from execute_real_world import dispatch_video_alert
+                
+                log.info(f"Triggering automated MP4 Generation pipeline for ${usd_value:,.0f} Whale Trade...")
+                # Fire the algorithm-optimized silent compilation native hook!
+                dispatch_video_alert(payload, include_music=False)
+                results["cinematic"] = "delivered"
+            else:
+                log.info(f"[Cinematic] Blocked MP4 Generation for ${usd_value:,.0f} trade. Daily 9:00 AM API quota (2 Max) strictly enforced.")
+                results["cinematic"] = "throttled_quota_met"
+        except Exception as e:
+            log.error(f"[Cinematic] Engine error bridging VisionEdgeAI: {e}")
+            results["cinematic"] = "failed"
+            
     # ── Twitter/X auto-post ────────────────────────────────────────────────────
     if TWITTER_ENABLED:
         try:
