@@ -545,7 +545,18 @@ async def whale_unfollow(req: WhaleFollowRequest):
 
 @app.get('/markets')
 async def proxy_markets(limit: int = 60, order: str = 'volume24hr', ascending: bool = False):
-    """Proxy Polymarket top markets — browser CORS blocks direct calls."""
+    """
+    Proxy Polymarket top markets — browser CORS blocks direct calls.
+    Uses Redis cache (60s TTL) so N concurrent users → 1 upstream request,
+    preventing IP bans. Uses httpx.AsyncClient to avoid blocking the event loop.
+    """
+    cache_key = f'cache:markets:{limit}:{order}:{ascending}'
+
+    # Fast path — return cached response if available
+    cached = await redis_client.get(cache_key)
+    if cached:
+        return JSONResponse(content=json.loads(cached))
+
     url = (
         f'https://gamma-api.polymarket.com/markets'
         f'?limit={limit}&order={order}&ascending={str(ascending).lower()}&active=true'
@@ -555,9 +566,19 @@ async def proxy_markets(limit: int = 60, order: str = 'volume24hr', ascending: b
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             'Accept': 'application/json',
         }
-        resp = httpx.get(url, headers=headers, timeout=12)
-        resp.raise_for_status()
-        return JSONResponse(content=resp.json())
+        # Use async client — never blocks the event loop
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, headers=headers, timeout=12.0)
+            resp.raise_for_status()
+            data = resp.json()
+
+        # Cache for 60 seconds — protects against IP bans under concurrent load
+        await redis_client.setex(cache_key, 60, json.dumps(data))
+        return JSONResponse(content=data)
+
+    except httpx.HTTPStatusError as e:
+        log.warning(f'Markets proxy HTTP error: {e.response.status_code}')
+        raise HTTPException(status_code=502, detail='Polymarket API returned an error.')
     except Exception as e:
         log.warning(f'Markets proxy error: {e}')
         raise HTTPException(status_code=502, detail='Could not fetch markets from Polymarket API.')
