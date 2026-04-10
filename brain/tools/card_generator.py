@@ -168,7 +168,7 @@ def _draw_probability_bar(draw: ImageDraw.Draw, x: int, y: int, width: int, heig
 
     # Probability label
     f_pct_label = _font(22, bold=True)
-    pct_label = f"{probability:.0%}"
+    pct_label = _pct_str(probability)
     draw.text((x + width + 14, y - 2), pct_label, font=f_pct_label, fill=(*accent, 255))
 
 def _draw_win_rate_bar(draw: ImageDraw.Draw, x: int, y: int, width: int,
