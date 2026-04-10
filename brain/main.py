@@ -76,6 +76,7 @@ from price_tracker import (
     init_db        as init_price_tracker_db,
     run_price_tracker_pass,
 )
+from kalshi_ear import poll_kalshi as _poll_kalshi_sync
 
 load_dotenv()
 
@@ -137,6 +138,18 @@ async def lifespan(app: FastAPI):
             log.info('PostgreSQL tables initialized.')
         except Exception as e:
             log.warning(f'DB init skipped (no connection?): {e}')
+
+    # ── Kalshi Ear async wrapper ──────────────────────────────────────────────
+    async def _run_kalshi_poll():
+        """Run the synchronous poll_kalshi in a thread executor so it never
+        blocks the FastAPI event loop."""
+        loop = asyncio.get_event_loop()
+        try:
+            forwarded = await loop.run_in_executor(None, _poll_kalshi_sync)
+            if forwarded:
+                log.info(f'[Kalshi] Scheduler: {forwarded} trade(s) forwarded.')
+        except Exception as e:
+            log.error(f'[Kalshi] Scheduled poll error: {e}')
 
     # ── Morning Alpha Briefing Scheduler ─────────────────────────────────────
     scheduler = AsyncIOScheduler()
@@ -204,6 +217,15 @@ async def lifespan(app: FastAPI):
         replace_existing=True,
     )
 
+    # ── Kalshi Ear — poll every 60 seconds ────────────────────────────────────
+    scheduler.add_job(
+        _run_kalshi_poll,
+        trigger=CronTrigger(second='0'),   # fires every 60s (once per minute)
+        id='kalshi_ear',
+        name='Kalshi Ear Poll (every 60s)',
+        replace_existing=True,
+    )
+
     scheduler.start()
     log.info(f'Briefing scheduler started — fires daily at {BRIEFING_HOUR:02d}:00 EST.')
     log.info('Market resolution cron scheduled — fires daily at 06:00 EST.')
@@ -213,6 +235,7 @@ async def lifespan(app: FastAPI):
     log.info('X (Twitter) Auto-Reply Engine scheduled — fires every 10 min.')
     log.info('X (Twitter) News-Jacking Engine scheduled — fires every 25 min.')
     log.info('X (Twitter) Mention-Reply Agent scheduled — fires every 15 min.')
+    log.info('Kalshi Ear scheduled — polls every 60s.')
 
     yield
     scheduler.shutdown(wait=False)

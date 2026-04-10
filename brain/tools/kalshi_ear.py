@@ -25,6 +25,10 @@ Self-annealing log:
               Kalshi moved their API from trading-api.kalshi.com to api.elections.kalshi.com.
               Response body: "API has been moved to https://api.elections.kalshi.com/"
               Fix: update KALSHI_BASE to https://api.elections.kalshi.com
+  2026-04-10: Kalshi V2 Fixed-Point migration finalized. The yes_price_fp field is no longer
+              returned. Live API now returns yes_price_dollars and no_price_dollars as dollar
+              strings (e.g. "0.8700"). Updated price parsing to use yes_price_dollars.
+              Verified: GET /trade-api/v2/markets/trades returns 200 with live trades.
 """
 
 import os
@@ -197,24 +201,24 @@ def poll_kalshi(brain_url: str = None) -> int:
         if len(_seen_trades) > 50_000:
             _seen_trades.clear()
 
-        # ── Parse trade values (handle post-/pre-migration field names) ──────
+        # ── Parse trade values (Kalshi V2 Fixed-Point format, April 2026) ───
         ticker     = trade.get('ticker', '')
         taker_side = (trade.get('taker_side', 'yes') or 'yes').lower()
 
-        # count_fp = contracts as fixed-point string (post March 2026 migration)
-        # count = integer (legacy, removed March 12, 2026)
+        # count_fp = contracts as fixed-point string (e.g. "100.00")
         count_raw = trade.get('count_fp') or trade.get('count') or 0
         count = float(count_raw) if count_raw else 0.0
 
-        # yes_price_fp = dollar string ("0.72") post-migration
-        # yes_price = integer cents (legacy)
-        price_raw = (
-            trade.get('yes_price_fp')
+        # V2 API (April 2026): yes_price_dollars / no_price_dollars (e.g. "0.8700")
+        # Fallback chain handles any future field renames gracefully
+        yes_price_raw = (
+            trade.get('yes_price_dollars')
+            or trade.get('yes_price_fp')
             or trade.get('yes_price_dollars')
             or (float(trade.get('yes_price', 50)) / 100 if trade.get('yes_price') else None)
             or 0.5
         )
-        yes_price = float(price_raw) if price_raw else 0.5
+        yes_price = float(yes_price_raw) if yes_price_raw else 0.5
 
         # USD value: contracts × price per contract ($1 at expiry)
         # If taker buys YES, they pay yes_price per contract
