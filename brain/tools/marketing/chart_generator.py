@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 log = logging.getLogger(__name__)
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', '..', '.tmp', 'marketing')
-ASSETS_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'assets')
+ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'assets')
 
 def _get_font(size: int, bold=False):
     """Attempt to load a system font, fallback to default."""
