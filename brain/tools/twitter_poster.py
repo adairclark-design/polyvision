@@ -86,12 +86,12 @@ def format_tweet(payload: dict) -> str:
 
     if source == "KALSHI":
         platform   = "Kalshi"
-        hashtags   = "#PredictionMarkets #Kalshi"
-        tags       = "@Kalshi"
+        hashtags   = "#PredictionMarkets"
+        tags       = "the Kalshi markets"
     else:
         platform   = "Polymarket"
-        hashtags   = "#PredictionMarkets #Polymarket"
-        tags       = "@Polymarket @unusual_whales"
+        hashtags   = "#PredictionMarkets"
+        tags       = "the Polymarket ecosystem"
 
     emoji = "🐋" if tier == "WHALE" or usd_value >= 50_000 else "🔵"
 
