@@ -127,8 +127,8 @@ def generate_thread_copy(trades: list) -> list:
         log.error(f"[Threader] Failed to generate OpenAI tweets: {e}")
         return []
 
-def execute_twitter_thread(tweets: list, dry_run: bool = False):
-    """Publish an array of tweets sequentially via Tweepy V2, ensuring they append seamlessly as replies."""
+def execute_twitter_thread(tweets: list, top_trade: dict = None, dry_run: bool = False):
+    """Publish an array of tweets sequentially via Tweepy V2, dynamically injecting custom generated media headers seamlessly."""
     if not tweets:
         log.warning("[Threader] Empty tweets array. Aborting.")
         return
@@ -154,6 +154,22 @@ def execute_twitter_thread(tweets: list, dry_run: bool = False):
             access_token_secret=TWITTER_ACCESS_TOKEN_SECRET
         )
         
+        # Instantiate V1.1 API specifically for native High-Res Media uploads (V2 doesn't fully support it yet)
+        auth = tweepy.OAuth1UserHandler(TWITTER_API_KEY, TWITTER_API_KEY_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET)
+        api_v1 = tweepy.API(auth)
+
+        media_id = None
+        if top_trade and not dry_run:
+            try:
+                from marketing.chart_generator import generate_chart
+                img_path = generate_chart(top_trade)
+                if img_path:
+                    media = api_v1.media_upload(filename=img_path)
+                    media_id = media.media_id
+                    log.info(f"[Threader] Uploaded dynamic CTA media successfully: {media_id}")
+            except Exception as e:
+                log.error(f"[Threader] Dynamic media generation/upload failed: {e}")
+
         log.info(f"[Threader] Assembling {len(tweets)}-tweet thread...")
         
         # Publish Hook (First Tweet)
@@ -165,7 +181,17 @@ def execute_twitter_thread(tweets: list, dry_run: bool = False):
         # Sequentially thread remaining tweets
         for i, tweet_copy in enumerate(tweets[1:], 2):
             time.sleep(2) # Avoid aggressive API tripping
-            reply = client.create_tweet(text=tweet_copy, in_reply_to_tweet_id=previous_tweet_id)
+            
+            is_last = (i == len(tweets))
+            kwargs = {
+                "text": tweet_copy,
+                "in_reply_to_tweet_id": previous_tweet_id
+            }
+            # Strictly attach the dynamic Media Image securely to the final CTA tweet!
+            if is_last and media_id:
+                kwargs["media_ids"] = [media_id]
+                
+            reply = client.create_tweet(**kwargs)
             previous_tweet_id = reply.data['id']
             published_tweet_ids.append(previous_tweet_id)
             log.info(f"[Threader] Successfully threaded part {i}: {previous_tweet_id}")
@@ -193,7 +219,7 @@ def run_daily_recap(dry_run: bool = False):
         return
         
     tweet_array = generate_thread_copy(trades)
-    execute_twitter_thread(tweet_array, dry_run=dry_run)
+    execute_twitter_thread(tweet_array, top_trade=trades[0], dry_run=dry_run)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

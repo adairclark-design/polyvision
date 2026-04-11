@@ -79,17 +79,34 @@ def render_whale_graphic(trade: dict, output_path: str) -> bool:
     bbox = draw.textbbox((0, 0), alert_text, font=font_alert)
     draw.text(((width - (bbox[2] - bbox[0])) / 2, 90), alert_text, fill="#5C5FE5", font=font_alert)
 
-    # ── Draw UI Card Boundary
-    card_margin = 60
-    
     import textwrap
     wrapped_market = textwrap.fill(market, width=26)
     num_lines = len(wrapped_market.split('\n'))
     
     # Compute true dimensions: padding(90) + text_block(82*lines) + bar_offset(240) + bar_height(60) + prob_text(90) + bottom_pad(90)
     card_height = 90 + (num_lines * 82) + 240 + 60 + 90 + 90
-    
-    card_top = (height - card_height) / 2  # Absolute mathematical UI vertical centering
+    card_margin = 60
+
+    # ── Draw New Official Logo
+    logo_path = os.path.join(ASSETS_DIR, "whale_logo.png")
+    try:
+        logo = Image.open(logo_path).convert("RGBA")
+        w_percent = (280 / float(logo.size[0]))
+        h_size = int(float(logo.size[1]) * w_percent)
+        logo = logo.resize((280, h_size), Image.Resampling.LANCZOS)
+        logo_x = int((width - 280) / 2)
+        
+        # Calculate total height of logo + gap + card to mathematically center the entire cluster
+        total_cluster_height = h_size + 80 + card_height
+        cluster_start_y = (height - total_cluster_height) / 2
+        
+        logo_y = int(cluster_start_y)
+        card_top = int(logo_y + h_size + 80)
+        
+        img.paste(logo, (logo_x, logo_y), logo)
+    except Exception as e:
+        log.warning(f"Failed to load whale logo: {e}")
+        card_top = (height - card_height) / 2
 
     
     # rounded_rectangle requires Pillow >= 8.2.0
