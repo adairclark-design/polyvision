@@ -543,9 +543,9 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
     if usd_value >= 100000:  # Only spawn expensive videos for $100k+ trades
         try:
             # 1. Enforce strict mathematical daily quota limits securely
-            from .marketing_quota import throttle_video_generation
+            from marketing_quota import throttle_video_generation
             if throttle_video_generation():
-                from .execute_real_world import dispatch_video_alert
+                from execute_real_world import dispatch_video_alert
                 
                 log.info(f"Triggering automated MP4 Generation pipeline for ${usd_value:,.0f} Whale Trade...")
                 # Fire the algorithm-optimized silent compilation native hook!

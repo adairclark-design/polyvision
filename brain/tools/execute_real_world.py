@@ -5,12 +5,12 @@ os.environ["CREATOMATE_API_KEY"] = os.getenv("CREATOMATE_API_KEY", "")
 os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY", "")
 os.environ["FAL_KEY"] = os.getenv("FAL_KEY", "")
 
-from .marketing.chart_generator import generate_chart
-from .marketing.tts_generator import generate_voiceover
-from .marketing.background_generator import generate_background
-from .marketing.video_factory import create_video, _upload_asset
+from marketing.chart_generator import generate_chart
+from marketing.tts_generator import generate_voiceover
+from marketing.background_generator import generate_background
+from marketing.video_factory import create_video, _upload_asset
 
-from .marketing.ai_copywriter import generate_social_copy
+from marketing.ai_copywriter import generate_social_copy
 
 def dispatch_video_alert(trade_payload=None, include_music=False):
     if trade_payload is None:
