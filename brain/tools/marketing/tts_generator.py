@@ -24,7 +24,7 @@ def _load_secrets():
         with open(SECRETS_PATH, 'r') as f:
             return json.load(f)
     except Exception as e:
-        log.error(f"Cannot load secrets.json: {e}")
+        log.warning(f"secrets.json not found (expected in Railway — using env vars): {e}")
         return {}
 
 SECRETS       = _load_secrets()
