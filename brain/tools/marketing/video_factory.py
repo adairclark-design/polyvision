@@ -52,11 +52,11 @@ CATBOX_API     = "https://catbox.moe/user/api.php"
 
 # ── Cloudflare R2 Config (loaded lazily so catbox fallback still works) ────────
 # To activate R2: add these 5 keys to secrets.json and they are auto-detected.
-R2_ACCOUNT_ID       = SECRETS.get("R2_ACCOUNT_ID", "")
-R2_ACCESS_KEY_ID    = SECRETS.get("R2_ACCESS_KEY_ID", "")
-R2_SECRET_ACCESS_KEY = SECRETS.get("R2_SECRET_ACCESS_KEY", "")
-R2_BUCKET_NAME      = SECRETS.get("R2_BUCKET_NAME", "polyvision-assets")
-R2_PUBLIC_URL       = SECRETS.get("R2_PUBLIC_URL", "")   # e.g. https://pub-xxxx.r2.dev
+R2_ACCOUNT_ID       = SECRETS.get("R2_ACCOUNT_ID", os.getenv("R2_ACCOUNT_ID", ""))
+R2_ACCESS_KEY_ID    = SECRETS.get("R2_ACCESS_KEY_ID", os.getenv("R2_ACCESS_KEY_ID", ""))
+R2_SECRET_ACCESS_KEY = SECRETS.get("R2_SECRET_ACCESS_KEY", os.getenv("R2_SECRET_ACCESS_KEY", ""))
+R2_BUCKET_NAME      = SECRETS.get("R2_BUCKET_NAME", os.getenv("R2_BUCKET_NAME", "polyvision-assets"))
+R2_PUBLIC_URL       = SECRETS.get("R2_PUBLIC_URL", os.getenv("R2_PUBLIC_URL", ""))   # e.g. https://pub-xxxx.r2.dev
 _R2_ENABLED         = bool(R2_ACCOUNT_ID and R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY and R2_PUBLIC_URL)
 
 

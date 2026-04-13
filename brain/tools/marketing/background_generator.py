@@ -186,8 +186,8 @@ def generate_background() -> str:
         except Exception:
             pass
 
-    fal_key     = secrets.get("FAL_KEY", "")
-    openai_key  = secrets.get("OPENAI_API_KEY", "")
+    fal_key     = secrets.get("FAL_KEY", os.getenv("FAL_KEY", ""))
+    openai_key  = secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
     theme       = random.choice(THEMES)
 
     # ── 1. Kling kinetic video (best quality) ─────────────────────────────────

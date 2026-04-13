@@ -43,7 +43,7 @@ def run_telemetry():
     fetches real metrics from the Twitter API, and writes them back.
     """
     secrets = _get_secrets()
-    db_url  = secrets.get('DATABASE_URL')
+    db_url  = secrets.get('DATABASE_URL', os.getenv('DATABASE_URL', ''))
 
     if not db_url:
         log.error("[Telemetry] No DATABASE_URL configured.")
@@ -61,10 +61,10 @@ def run_telemetry():
         import tweepy
 
         twitter_client = tweepy.Client(
-            consumer_key        = secrets.get('TWITTER_API_KEY'),
-            consumer_secret     = secrets.get('TWITTER_API_SECRET'),
-            access_token        = secrets.get('TWITTER_ACCESS_TOKEN'),
-            access_token_secret = secrets.get('TWITTER_ACCESS_SECRET'),
+            consumer_key        = secrets.get('TWITTER_API_KEY', os.getenv('TWITTER_API_KEY', '')),
+            consumer_secret     = secrets.get('TWITTER_API_SECRET', os.getenv('TWITTER_API_SECRET', os.getenv('TWITTER_API_KEY_SECRET', ''))),
+            access_token        = secrets.get('TWITTER_ACCESS_TOKEN', os.getenv('TWITTER_ACCESS_TOKEN', '')),
+            access_token_secret = secrets.get('TWITTER_ACCESS_SECRET', os.getenv('TWITTER_ACCESS_SECRET', os.getenv('TWITTER_ACCESS_TOKEN_SECRET', ''))),
             wait_on_rate_limit  = False,
         )
         log.info("[Telemetry] Tweepy client authenticated.")
