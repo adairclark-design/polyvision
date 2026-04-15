@@ -341,7 +341,9 @@ def _recalculate_all_win_rates(conn) -> int:
 def run_resolution_pass():
     """Called by APScheduler cron in main.py."""
     try:
-        init_db()
+        # DO NOT call init_db() here.
+        # ALTER TABLE requires an AccessExclusiveLock which causes deadlocks 
+        # against normal RowExclusiveLocks during active trading ingestion.
         return resolve_pending_trades()
     except Exception as e:
         log.error(f"Resolution cron failed: {e}")
