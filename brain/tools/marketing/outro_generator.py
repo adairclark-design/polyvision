@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 outro_generator.py
 Generates a polished 720x1280 Outro screen natively in Python.
@@ -13,7 +14,10 @@ from PIL import Image, ImageDraw, ImageFont
 
 log = logging.getLogger(__name__)
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', '..', '.tmp', 'marketing')
-ASSETS_DIR = os.path.join(os.path.dirname(__file__), '..', '..', 'assets')
+ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'assets')
+
+# ── Daily outro cache: regenerate once per UTC day, reuse across all videos ───────
+_outro_cache: dict[str, str] = {}  # {"YYYY-MM-DD": "/path/to/outro.png"}
 
 def _get_font(size: int, bold=False):
     try:
@@ -35,6 +39,15 @@ def _draw_gradient(img, color_top, color_bottom):
 
 
 def generate_outro() -> str | None:
+    from datetime import datetime, timezone as _tz
+    today_key = datetime.now(_tz.utc).strftime("%Y-%m-%d")
+
+    # Return cached path if it was generated today and still exists
+    cached = _outro_cache.get(today_key)
+    if cached and os.path.exists(cached):
+        log.info(f"[Outro] Using cached outro for {today_key}: {cached}")
+        return cached
+
     width, height = 1080, 1920
     
     # ── Match Genuine Logo Background (13, 17, 23)
@@ -91,6 +104,7 @@ def generate_outro() -> str | None:
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     img.save(output_path, "PNG")
     log.info(f"Outro Graphic saved → {output_path}")
+    _outro_cache[today_key] = output_path  # cache for the rest of the day
     return output_path
 
 if __name__ == "__main__":

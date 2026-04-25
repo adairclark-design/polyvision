@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 video_factory.py — VisionEdge Marketing Agent | Layer 3: Video
 Renders a TikTok-ready 1080x1920 MP4 using the Creatomate v2 API.
@@ -106,6 +107,8 @@ def _upload_asset(file_path: str, retries: int = 2) -> str | None:
                 return public_url
             except Exception as e:
                 log.warning(f"[R2] Upload attempt {attempt + 1} failed: {e}")
+                import time
+                time.sleep(2 ** attempt)
         log.error(f"[R2] All {1 + retries} attempts failed for {filename} — falling back to catbox.")
 
     # ── 2. Catbox.moe fallback ────────────────────────────────────────────────
@@ -117,6 +120,7 @@ def _upload_asset(file_path: str, retries: int = 2) -> str | None:
                     CATBOX_API,
                     data={"reqtype": "fileupload"},
                     files={"fileToUpload": (filename, f)},
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
                     timeout=60,
                 )
             resp.raise_for_status()
@@ -127,6 +131,8 @@ def _upload_asset(file_path: str, retries: int = 2) -> str | None:
             log.error(f"[catbox] Unexpected response: {url[:100]}")
         except Exception as e:
             log.warning(f"[catbox] Upload attempt {attempt + 1} failed: {e}")
+            import time
+            time.sleep(2 ** attempt)
     log.error(f"[CDN] All upload attempts exhausted for {filename}.")
     return None
 
@@ -150,6 +156,9 @@ def _submit_render(chart_url: str, audio_url: str | None, caption: str, bg_image
     """
     if not CREATOMATE_KEY or "PASTE" in CREATOMATE_KEY:
         log.error("CREATOMATE_API_KEY not configured.")
+        return None
+    if not bg_image_url:
+        log.error("Missing background image URL for render.")
         return None
     # ── Blank Canvas Architecture ──
     # We no longer rely on a stock template because template mapping via modifications

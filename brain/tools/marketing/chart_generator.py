@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 chart_generator.py — VisionEdge Marketing Agent | Layer 3: Chart
 Completely rewritten to use Pillow (PIL) for generating high-end, 
@@ -41,7 +42,11 @@ def _draw_gradient(img, color_top, color_bottom):
 def render_whale_graphic(trade: dict, output_path: str) -> bool:
     """Renders a custom prediction market UI card graphic."""
     width, height = 1080, 1920
-    
+
+    # Read cluster / recap flags set by the scheduler
+    is_cluster  = trade.get("_is_cluster", False)
+    trade_count = int(trade.get("_trade_count", 1))
+
     # Premium Dynamic Gradients
     palettes = [
         ((15, 23, 42), (6, 73, 56)),   # Slate to Deep Emerald
@@ -72,12 +77,16 @@ def render_whale_graphic(trade: dict, output_path: str) -> bool:
     accent_color = "#10B981" if is_yes else "#EF4444"  # Green / Red
     card_bg = (22, 27, 38, 200) # RGBA Deep Glassmorphism (opacity ~78%)
     
-    # ── Draw Top Alert text
+    # ── Draw Top Alert text (cluster vs. single)
     font_alert = _get_font(54, bold=True)
-    alert_text = "🚨 POLYVISION WHALE ALERT"
-    # To center:
+    if is_cluster:
+        alert_text  = f"🐋 POLYVISION CLUSTER ALERT"
+        alert_color = "#F59E0B"   # amber — visually distinct from single-bet purple
+    else:
+        alert_text  = "🚨 POLYVISION WHALE ALERT"
+        alert_color = "#5C5FE5"
     bbox = draw.textbbox((0, 0), alert_text, font=font_alert)
-    draw.text(((width - (bbox[2] - bbox[0])) / 2, 90), alert_text, fill="#5C5FE5", font=font_alert)
+    draw.text(((width - (bbox[2] - bbox[0])) / 2, 90), alert_text, fill=alert_color, font=font_alert)
 
     import textwrap
     wrapped_market = textwrap.fill(market, width=26)
@@ -129,10 +138,13 @@ def render_whale_graphic(trade: dict, output_path: str) -> bool:
         draw.text(((width - lw) / 2, y_text), line, fill="#F8FAFC", font=font_market)
         y_text += 82
         
-    # ── Draw Exact Bet Text (Auto-scaling to prevent cropping)
+    # ── Draw Exact Bet Text (cluster-aware, auto-scaling to prevent cropping)
     font_size = 96
-    font_bet = _get_font(font_size, bold=True)
-    bet_text = f"{amount_str} on '{outcome}'"
+    font_bet  = _get_font(font_size, bold=True)
+    if is_cluster:
+        bet_text = f"\U0001f40b\u00d7{trade_count} — {amount_str} on '{outcome}'"
+    else:
+        bet_text = f"{amount_str} on '{outcome}'"
     max_text_width = width - (card_margin * 2) - 60
     
     while True:
@@ -177,7 +189,7 @@ def render_whale_graphic(trade: dict, output_path: str) -> bool:
     log.info(f"UI Glassmorphic Graphic saved → {output_path}")
     return True
 
-def generate_chart(trade: dict | str = None, timespan="day", limit=60) -> str | None:
+def generate_chart(trade = None, timespan="day", limit=60):
     if isinstance(trade, str) or trade is None:
         trade = {"usd_value": 0, "market_title": "Market", "outcome": "Yes", "price": 0.5}
         

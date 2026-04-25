@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import json
 import uuid
@@ -19,8 +20,29 @@ except ImportError:
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', '..', '.tmp', 'marketing')
 
-# ── Cinematic prompt themes (shared across DALL-E & Kling) ────────────────────
-THEMES = [
+# ── Cinematic prompt themes, grouped by market category ───────────────────────
+THEMES_CRYPTO = [
+    "quantum computing neural nodes pulsing with electric light",
+    "deep ocean cybernetic fiber optics glowing in the dark",
+    "sleek glassmorphism data panels floating in deep space",
+    "abstract liquid mercury flowing through a dark digital void",
+    "three-dimensional blockchain data structures rotating slowly",
+]
+THEMES_POLITICAL = [
+    "cinematic deep space with shimmering particle constellations",
+    "glowing neural pathways firing across a dark abstract brain",
+    "high-frequency trading laser grids cascading with neon data",
+    "surreal dark marble hall with glowing archways and fog",
+    "abstract monolithic columns in a dark foggy void",
+]
+THEMES_SPORTS = [
+    "cyberpunk city skyline reflected in a still neon-lit ocean",
+    "dark neon bioluminescence geometric network slowly shifting",
+    "cinematic slow-motion sparks raining in a dark arena",
+    "dark stadium lights dissolving into neon geometric particles",
+    "abstract kinetic energy fields colliding in deep dark space",
+]
+THEMES_DEFAULT = [
     "quantum computing neural nodes pulsing with electric light",
     "sleek glassmorphism data panels floating in deep space",
     "deep ocean cybernetic fiber optics glowing in the dark",
@@ -32,8 +54,30 @@ THEMES = [
     "glowing neural pathways firing across a dark abstract brain",
     "cinematic deep space with shimmering particle constellations",
 ]
+THEMES = THEMES_DEFAULT  # legacy alias
+
+_CRYPTO_KEYWORDS    = {"btc", "eth", "bitcoin", "ethereum", "crypto", "sol", "xrp", "doge", "defi", "nft"}
+_POLITICAL_KEYWORDS = {"trump", "election", "president", "senate", "congress", "fed", "rate", "policy",
+                       "vote", "democrat", "republican", "white house", "supreme", "tariff", "nato"}
+_SPORTS_KEYWORDS    = {"nfl", "nba", "mlb", "nhl", "soccer", "fifa", "ufc", "mma", "tennis", "golf",
+                       "dota", "lol", "esport", "game", "match", "winner", "celtics", "lakers",
+                       "team liquid", "super bowl", "world cup", "playoff", "championship"}
+
+
+def _pick_theme(market_hint: str = "") -> str:
+    """Select a theme pool matching the market category."""
+    hint = market_hint.lower()
+    if any(k in hint for k in _CRYPTO_KEYWORDS):
+        return random.choice(THEMES_CRYPTO)
+    if any(k in hint for k in _POLITICAL_KEYWORDS):
+        return random.choice(THEMES_POLITICAL)
+    if any(k in hint for k in _SPORTS_KEYWORDS):
+        return random.choice(THEMES_SPORTS)
+    return random.choice(THEMES_DEFAULT)
+
 
 VERTICAL_RATIO = "9:16"   # TikTok / Reels / Shorts format
+
 
 
 # ── Fallback: local grid (emergency only) ─────────────────────────────────────
@@ -131,51 +175,67 @@ def _generate_dalle_background(theme: str, api_key: str) -> str | None:
     )
 
     log.info(f"[DALL-E 3] Requesting static background: '{theme}'")
-    try:
-        client = OpenAI(api_key=api_key)
-        response = client.images.generate(
-            model="dall-e-3",
-            prompt=prompt,
-            size="1024x1792",
-            quality="hd",
-            n=1,
-        )
-        image_url = response.data[0].url
+    import time
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            client = OpenAI(api_key=api_key)
+            response = client.images.generate(
+                model="dall-e-3",
+                prompt=prompt,
+                size="1024x1792",
+                quality="hd",
+                n=1,
+            )
+            image_url = response.data[0].url
 
-        ctx = ssl.create_default_context()
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-        req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, context=ctx) as r:
-            img_data = r.read()
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, context=ctx) as r:
+                img_data = r.read()
 
-        img = Image.open(io.BytesIO(img_data)).convert("RGB")
-        ts = __import__('datetime').datetime.now(
-            __import__('datetime').timezone.utc
-        ).strftime("%Y%m%d_%H%M%S")
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
-        out_path = os.path.join(OUTPUT_DIR, f"dalle_bg_{ts}.png")
-        img.save(out_path, "PNG")
-        log.info(f"[DALL-E 3] Background image saved → {out_path}")
-        return out_path
+            img = Image.open(io.BytesIO(img_data)).convert("RGB")
+            ts = __import__('datetime').datetime.now(
+                __import__('datetime').timezone.utc
+            ).strftime("%Y%m%d_%H%M%S")
+            os.makedirs(OUTPUT_DIR, exist_ok=True)
+            out_path = os.path.join(OUTPUT_DIR, f"dalle_bg_{ts}.jpg")
+            img.save(out_path, "JPEG", quality=85)
+            log.info(f"[DALL-E 3] Background image saved → {out_path}")
+            return out_path
 
-    except Exception as e:
-        log.error(f"[DALL-E 3] Generation failed: {e}")
-        return None
+        except Exception as e:
+            if "429" in str(e):
+                log.warning(f"[DALL-E 3] HTTP 429 Rate Limit. (Attempt {attempt}/{max_retries})")
+            else:
+                log.error(f"[DALL-E 3] Generation Exception: {e}")
+
+            if attempt == max_retries:
+                log.error("[DALL-E 3] Generation failed: All retry attempts exhausted.")
+                return None
+
+            delay = 2 ** attempt
+            log.info(f"⏳ Sleeping {delay}s before DALL-E 3 retry...")
+            time.sleep(delay)
+            
+    return None
 
 
 # ── Public Interface ───────────────────────────────────────────────────────────
-def generate_background() -> str:
+def generate_background(market_hint: str = "") -> str:
     """
     Generate a background asset for the PolyVision video pipeline.
 
-    Priority order:
-      1. Kling v2.6 Pro via fal.ai (kinetic MP4 — if FAL_KEY set in secrets.json)
-      2. DALL-E 3 (static PNG — always available as main fallback)
-      3. Local grid (emergency fallback if all APIs fail)
+    Args:
+        market_hint: Market title string. Routes theme to a category-appropriate
+                     pool (crypto/political/sports/default) for visual variety.
 
-    Returns the local path to either an MP4 (Kling) or PNG (DALL-E / grid).
-    video_factory.py detects the extension and routes accordingly.
+    Priority order:
+      1. Kling v2.6 Pro via fal.ai (kinetic MP4)
+      2. DALL-E 3 (static PNG fallback)
+      3. Local grid (emergency fallback)
     """
     secrets_path = os.path.join(os.path.dirname(__file__), '..', '..', 'secrets.json')
     secrets = {}
@@ -186,9 +246,10 @@ def generate_background() -> str:
         except Exception:
             pass
 
-    fal_key     = secrets.get("FAL_KEY", os.getenv("FAL_KEY", ""))
-    openai_key  = secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
-    theme       = random.choice(THEMES)
+    fal_key    = secrets.get("FAL_KEY", os.getenv("FAL_KEY", ""))
+    openai_key = secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
+    theme      = _pick_theme(market_hint)
+    log.info(f"[BG] Market: '{market_hint[:40]}' → theme: '{theme[:50]}'")
 
     # ── 1. Kling kinetic video (best quality) ─────────────────────────────────
     if fal_key:
