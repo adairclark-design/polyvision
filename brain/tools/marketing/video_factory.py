@@ -123,17 +123,35 @@ def _upload_asset(file_path: str, retries: int = 2) -> str | None:
                     headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
                     timeout=60,
                 )
-            resp.raise_for_status()
-            url = resp.text.strip()
-            if url.startswith("https://"):
-                log.info(f"[catbox] Uploaded {filename} → {url}")
-                return url
-            log.error(f"[catbox] Unexpected response: {url[:100]}")
+                if url.startswith("https://"):
+                    log.info(f"[catbox] Uploaded {filename} → {url}")
+                    return url
+                log.error(f"[catbox] Unexpected response: {url[:100]}")
         except Exception as e:
             log.warning(f"[catbox] Upload attempt {attempt + 1} failed: {e}")
             import time
             time.sleep(2 ** attempt)
-    log.error(f"[CDN] All upload attempts exhausted for {filename}.")
+    log.warning(f"[CDN] catbox exhausted for {filename} — trying transfer.sh (server-friendly CDN).")
+
+    # ── 3. transfer.sh (CDN #3 — no credentials, works from datacenter IPs) ──────
+    try:
+        with open(file_path, "rb") as f:
+            resp = requests.put(
+                f"https://transfer.sh/{filename}",
+                data=f,
+                headers={"Max-Days": "7"},   # Keep for 7 days — more than enough for render pipeline
+                timeout=60,
+            )
+        resp.raise_for_status()
+        url = resp.text.strip()
+        if url.startswith("https://"):
+            log.info(f"[transfer.sh] Uploaded {filename} → {url}")
+            return url
+        log.error(f"[transfer.sh] Unexpected response: {url[:100]}")
+    except Exception as e:
+        log.error(f"[transfer.sh] Upload failed: {e}")
+
+    log.error(f"[CDN] All 3 CDN tiers exhausted for {filename}. Returning None.")
     return None
 
 
