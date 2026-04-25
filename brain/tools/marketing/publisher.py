@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 publisher.py — PolyVision Marketing Agent | Layer 3: Publishing
 Routes finished content to social platforms:
@@ -83,9 +84,8 @@ def post_text(platform: str, text: str, dry_run: bool = False) -> dict:
         log.info(f"[DRY-RUN] X: {text[:140]}...")
         return {"status": "dry_run", "platform": "twitter", "content": text}
 
-    # Path A: PolyVision's twitter_poster — call post_tweet() directly with our
-    # pre-written marketing text (NOT maybe_tweet, which ignores our text and
-    # applies its own whale-alert template to it).
+    # Path A: PolyVision's twitter_poster (local Mac dev only — not available on Railway).
+    # Silently skipped on Railway; Tweepy (Path B) is the production Twitter path.
     polyvision_tools_abs = os.path.abspath(POLYVISION_TOOLS)
 
     if os.path.isdir(polyvision_tools_abs):
@@ -188,7 +188,7 @@ def post_video(platform: str, video_url: str, caption: str, dry_run: bool = Fals
             "platform[]": ["tiktok", "youtube", "instagram"],
             "title": youtube_title,
             "description": youtube_desc,
-            "async_upload": "true"
+            "async_upload": "false"   # sync — returns real post_id for RL write-back
         }
         
         # Explicitly declare the file signature to prevent Image miscategorizations

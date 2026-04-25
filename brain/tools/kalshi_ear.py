@@ -165,6 +165,9 @@ def poll_kalshi(brain_url: str = None) -> int:
             params=params,
             timeout=12,
         )
+    except requests.exceptions.RequestException as e:
+        log.warning(f'[Kalshi] Request failed (timeout or connectivity): {e}')
+        return 0
     except Exception as e:
         log.error(f'[Kalshi] Request failed: {e}')
         return 0

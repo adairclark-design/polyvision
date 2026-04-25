@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 agent_db.py — VisionEdge Marketing Agent | Layer 3: Database
 Initializes and manages the agent_marketing_campaigns table.
@@ -65,41 +66,59 @@ def init_db():
         log.info("agent_marketing_campaigns table ready.")
 
         # ── video_history: ensure RL-critical columns exist ──────────────────
-        # This table is created externally (by whale_data_fetcher / test_video).
-        # We only add the columns the RL telemetry loop needs if missing.
-        with conn.cursor() as cur:
-            cur.execute("""
-                DO $$
-                BEGIN
-                    -- post_id: stores the tweet_id returned by Twitter after publishing
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_name='video_history' AND column_name='post_id'
-                    ) THEN
-                        ALTER TABLE video_history ADD COLUMN post_id TEXT DEFAULT NULL;
-                    END IF;
+        # Open a FRESH connection — the outer `with get_conn()` block closed its
+        # connection on __exit__. Re-using `conn` there would silently fail.
+        with get_conn() as conn2:
+            with conn2.cursor() as cur2:
+                cur2.execute("""
+                    DO $$
+                    BEGIN
+                        -- post_id: stores the platform post ID after auto-publishing
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name='video_history' AND column_name='post_id'
+                        ) THEN
+                            ALTER TABLE video_history ADD COLUMN post_id TEXT DEFAULT NULL;
+                        END IF;
 
-                    -- impressions: populated nightly by metrics_fetcher via Twitter API
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_name='video_history' AND column_name='impressions'
-                    ) THEN
-                        ALTER TABLE video_history ADD COLUMN impressions INTEGER DEFAULT 0;
-                    END IF;
+                        -- impressions: populated nightly by metrics_fetcher
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name='video_history' AND column_name='impressions'
+                        ) THEN
+                            ALTER TABLE video_history ADD COLUMN impressions INTEGER DEFAULT 0;
+                        END IF;
 
-                    -- upvotes: Twitter likes — used by Epsilon-Greedy as quality signal
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.columns
-                        WHERE table_name='video_history' AND column_name='upvotes'
-                    ) THEN
-                        ALTER TABLE video_history ADD COLUMN upvotes INTEGER DEFAULT 0;
-                    END IF;
-                END $$;
-            """)
-        conn.commit()
+                        -- upvotes: likes — used by Epsilon-Greedy as quality signal
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name='video_history' AND column_name='upvotes'
+                        ) THEN
+                            ALTER TABLE video_history ADD COLUMN upvotes INTEGER DEFAULT 0;
+                        END IF;
+
+                        -- mode: fresh|cluster|recap — the story type the RL system controls
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name='video_history' AND column_name='mode'
+                        ) THEN
+                            ALTER TABLE video_history ADD COLUMN mode TEXT DEFAULT 'fresh';
+                        END IF;
+
+                        -- market_category: crypto|political|sports|default
+                        IF NOT EXISTS (
+                            SELECT 1 FROM information_schema.columns
+                            WHERE table_name='video_history' AND column_name='market_category'
+                        ) THEN
+                            ALTER TABLE video_history ADD COLUMN market_category TEXT DEFAULT 'default';
+                        END IF;
+                    END $$;
+                """)
+            conn2.commit()
         log.info("video_history RL columns verified (post_id, impressions, upvotes).")
     except Exception as e:
         log.warning(f"agent_db init failed: {e}")
+
 
 
 def log_campaign(
@@ -109,7 +128,7 @@ def log_campaign(
     content: str,
     video_url: str = "",
     chart_image_url: str = ""
-) -> int | None:
+):
     """Insert a new campaign row and return its ID."""
     if not DATABASE_URL:
         log.info(f"[DRY-RUN] Campaign logged — {platform} | {ticker} | {content[:80]}")

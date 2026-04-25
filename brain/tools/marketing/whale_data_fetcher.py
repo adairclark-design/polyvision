@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 whale_data_fetcher.py — Layer 3: Execution
 Fetches REAL recent whale trades from the PolyVision PostgreSQL database
@@ -68,14 +69,17 @@ def fetch_recent_whale_trades(
     min_usd: float = 25_000,
     hours_back: int = 48,
     limit: int = 10,
+    max_age_minutes: int | None = None,
 ) -> list[dict]:
     """
     Fetch recent large whale trades from the PolyVision database.
 
     Args:
-        min_usd:    Minimum USD trade size to include (default $25k)
-        hours_back: How many hours back to look (default 48h)
-        limit:      Max trades to return (default 10)
+        min_usd:          Minimum USD trade size to include (default $25k)
+        hours_back:       How many hours back to look (default 48h)
+        limit:            Max trades to return (default 10)
+        max_age_minutes:  If set, only return trades younger than this many
+                          minutes (freshness gate). None = no freshness filter.
 
     Returns:
         List of trade dicts with keys:
@@ -92,7 +96,6 @@ def fetch_recent_whale_trades(
         import psycopg2
         import psycopg2.extras
     except ImportError:
-        # Try installing it quietly
         try:
             import subprocess
             subprocess.run([sys.executable, "-m", "pip", "install", "psycopg2-binary", "-q"], check=True)
@@ -102,9 +105,18 @@ def fetch_recent_whale_trades(
             log.error(f"psycopg2 not available: {e}")
             return []
 
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
+    now    = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=hours_back)
 
-    query = """
+    # Build optional freshness clause
+    freshness_clause = ""
+    freshness_param  = None
+    if max_age_minutes is not None:
+        freshness_cutoff = now - timedelta(minutes=max_age_minutes)
+        freshness_clause = "AND t.created_at >= %s"
+        freshness_param  = freshness_cutoff
+
+    query = f"""
         SELECT
             t.id,
             t.market_title,
@@ -120,19 +132,23 @@ def fetch_recent_whale_trades(
         LEFT JOIN wallets w ON t.wallet_address = w.wallet_address
         WHERE t.usd_value >= %s
           AND t.created_at >= %s
+          {freshness_clause}
           AND t.id NOT IN (SELECT trade_id FROM video_history)
         ORDER BY t.usd_value DESC, t.created_at DESC
         LIMIT %s
     """
 
     try:
-        # psycopg2 doesn't accept asyncpg-style postgres:// — convert if needed
         if db_url.startswith("postgres://") and not db_url.startswith("postgresql://"):
             db_url = db_url.replace("postgres://", "postgresql://", 1)
 
         conn   = psycopg2.connect(db_url)
         cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cursor.execute(query, (min_usd, cutoff, limit))
+        params = [min_usd, cutoff]
+        if freshness_param:
+            params.append(freshness_param)
+        params.append(limit)
+        cursor.execute(query, params)
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
@@ -140,14 +156,13 @@ def fetch_recent_whale_trades(
         trades = []
         for row in rows:
             t = dict(row)
-            # Convert datetime to ISO string for JSON serialisation
             if isinstance(t.get("created_at"), datetime):
                 t["created_at"] = t["created_at"].isoformat()
-            # Format a friendly timestamp (e.g. "2 hours ago")
             t["age_label"] = _age_label(t.get("created_at", ""))
             trades.append(t)
 
-        log.info(f"whale_data_fetcher: Fetched {len(trades)} real trades (>= ${min_usd:,.0f}, last {hours_back}h)")
+        freshness_tag = f", max_age={max_age_minutes}m" if max_age_minutes else ""
+        log.info(f"whale_data_fetcher: Fetched {len(trades)} real trades (>= ${min_usd:,.0f}, last {hours_back}h{freshness_tag})")
         return trades
 
     except psycopg2.OperationalError as e:
@@ -158,18 +173,160 @@ def fetch_recent_whale_trades(
         return []
 
 
+def fetch_momentum_clusters(
+    min_cluster_usd: float = 50_000,
+    min_trade_count: int   = 3,
+    window_minutes:  int   = 120,
+    max_age_minutes: int   = 90,
+) -> list[dict]:
+    """
+    Detect markets with a burst of whale activity in a short rolling window.
+
+    A "momentum cluster" fires when:
+      - 3+ individual trades hit the same market_id in the last `window_minutes`
+      - Their combined USD value exceeds `min_cluster_usd`
+      - At least one trade is younger than `max_age_minutes` (freshness gate)
+      - No video has been generated for that market recently
+        (the scheduler enforces a per-market cooldown on top of this)
+
+    Returns a list of cluster dicts, each containing:
+        market_id, market_title, trade_count, total_usd,
+        latest_price, latest_trade_at, representative_trade_id
+    Ordered by total_usd DESC so the hottest cluster is first.
+    """
+    db_url = _get_db_url()
+    if not db_url:
+        log.warning("fetch_momentum_clusters: No DATABASE_URL.")
+        return []
+
+    try:
+        import psycopg2
+        import psycopg2.extras
+    except ImportError:
+        log.error("psycopg2 not available for momentum query.")
+        return []
+
+    now              = datetime.now(timezone.utc)
+    window_cutoff    = now - timedelta(minutes=window_minutes)
+    freshness_cutoff = now - timedelta(minutes=max_age_minutes)
+
+    # Find markets where ≥N trades totaling ≥$X happened in the window,
+    # and at least one trade is fresh (< max_age_minutes old).
+    # Exclude markets that already have a video in video_history.
+    query = """
+        SELECT
+            t.market_id,
+            t.market_title,
+            COUNT(*)               AS trade_count,
+            SUM(t.usd_value)       AS total_usd,
+            AVG(t.price)           AS latest_price,
+            MAX(t.created_at)      AS latest_trade_at,
+            MAX(t.id)              AS representative_trade_id
+        FROM trades t
+        WHERE t.created_at >= %s
+          AND t.usd_value   >= 5000
+        GROUP BY t.market_id, t.market_title
+        HAVING
+            COUNT(*)         >= %s
+            AND SUM(t.usd_value) >= %s
+            AND MAX(t.created_at) >= %s
+        ORDER BY total_usd DESC
+        LIMIT 5;
+    """
+
+    try:
+        if db_url.startswith("postgres://") and not db_url.startswith("postgresql://"):
+            db_url = db_url.replace("postgres://", "postgresql://", 1)
+
+        conn   = psycopg2.connect(db_url)
+        cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute(query, (window_cutoff, min_trade_count, min_cluster_usd, freshness_cutoff))
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        clusters = []
+        for row in rows:
+            c = dict(row)
+            if isinstance(c.get("latest_trade_at"), datetime):
+                c["latest_trade_at"] = c["latest_trade_at"].isoformat()
+            c["total_usd"]    = float(c.get("total_usd", 0))
+            c["latest_price"] = float(c.get("latest_price", 0.5))
+            c["trade_count"]  = int(c.get("trade_count", 0))
+            clusters.append(c)
+
+        if clusters:
+            log.info(
+                f"[Momentum] {len(clusters)} cluster(s) detected. "
+                f"Hottest: '{clusters[0]['market_title'][:50]}' "
+                f"({clusters[0]['trade_count']} trades, ${clusters[0]['total_usd']:,.0f})"
+            )
+        return clusters
+
+    except psycopg2.OperationalError as e:
+        log.warning(f"fetch_momentum_clusters: DB connection failed: {e}")
+        return []
+    except Exception as e:
+        log.error(f"fetch_momentum_clusters: Query failed: {e}")
+        return []
+
+
 def pick_best_trade(trades: list[dict]) -> dict | None:
     """
-    From the list of real trades, pick the single most 'marketable' one —
-    biggest dollar amount with a human-readable market title.
+    From the list of real trades, pick the single most 'marketable' one.
+
+    Selection strategy: Contrarian Score = usd_value × market_uncertainty
+      where market_uncertainty = 1 - |price - 0.5| × 2  (peaks at 1.0 for 50/50,
+      falls to 0.0 for 100% certainty).
+
+    This prevents 99%+ sure-thing bets (like a $150K bet at 0.99 odds) from
+    winning the selection — they score near-zero despite their size.
+    Trades with price outside 15%–85% range are excluded entirely as boring.
     """
     if not trades:
         return None
-    # Sort by USD value descending, skip trades with blank market titles
-    valid = [t for t in trades if t.get("market_title", "").strip()]
+
+    PROB_MIN = 0.15   # Reject near-certain bets (≤15% implied prob side)
+    PROB_MAX = 0.85   # Reject near-certain bets (≥85% implied prob side)
+
+    valid = [
+        t for t in trades
+        if t.get("market_title", "").strip()
+        and PROB_MIN <= float(t.get("price", 0.5)) <= PROB_MAX
+    ]
+
+    if not valid:
+        # Fallback: relax filter to 10%–90% if nothing qualifies
+        log.warning("[Picker] No trades in 15-85% probability band — relaxing to 10-90%.")
+        valid = [
+            t for t in trades
+            if t.get("market_title", "").strip()
+            and 0.10 <= float(t.get("price", 0.5)) <= 0.90
+        ]
+
+    if not valid:
+        # Final fallback: just take largest by USD (old behaviour) to avoid None
+        log.warning("[Picker] All trades are near-certain — using raw USD fallback.")
+        valid = [t for t in trades if t.get("market_title", "").strip()]
+
     if not valid:
         return None
-    return sorted(valid, key=lambda t: float(t.get("usd_value", 0)), reverse=True)[0]
+
+    def _contrarian_score(t: dict) -> float:
+        usd   = float(t.get("usd_value", 0))
+        price = float(t.get("price", 0.5))
+        # uncertainty: 1.0 at p=0.50, 0.0 at p=0.00 or p=1.00
+        uncertainty = 1.0 - abs(price - 0.5) * 2
+        return usd * uncertainty
+
+    best = sorted(valid, key=_contrarian_score, reverse=True)[0]
+    score = _contrarian_score(best)
+    log.info(
+        f"[Picker] Selected trade: ${float(best.get('usd_value', 0)):,.0f} "
+        f"@ {float(best.get('price', 0.5)):.0%} odds | "
+        f"contrarian_score={score:,.0f} | '{best.get('market_title', '')[:50]}'"
+    )
+    return best
 
 
 def format_trade_for_llm(trade: dict) -> str:
