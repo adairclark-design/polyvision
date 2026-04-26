@@ -278,7 +278,7 @@ def deliver_tiktok_package_email(
         
         <p><strong>Post Caption (Copy & Paste):</strong></p>
         <div style="background: #f3f4f6; padding: 16px; border-radius: 8px;">
-            {caption}
+            {full_caption}
         </div>
 
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
