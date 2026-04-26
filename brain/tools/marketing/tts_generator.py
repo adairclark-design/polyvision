@@ -33,9 +33,56 @@ SECRETS       = _load_secrets()
 OPENAI_API_KEY = SECRETS.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
 
 
+def _expand_numbers(text: str) -> str:
+    """
+    Safety net: expand abbreviated dollar amounts to spoken form before TTS.
+    Handles the most common formats the AI copywriter might produce.
+    '$36K'   → 'thirty-six thousand dollars'
+    '$1.2M'  → 'one point two million dollars'
+    '$36,428'→ 'thirty-six thousand dollars'  (rounds to nearest thousand)
+    """
+    import re
+
+    _ones  = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven',
+               'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen',
+               'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen']
+    _tens  = ['', '', 'twenty', 'thirty', 'forty', 'fifty',
+               'sixty', 'seventy', 'eighty', 'ninety']
+
+    def _int_to_words(n: int) -> str:
+        if n == 0:    return 'zero'
+        if n < 20:    return _ones[n]
+        if n < 100:   return _tens[n // 10] + (f'-{_ones[n % 10]}' if n % 10 else '')
+        if n < 1000:  return _ones[n // 100] + ' hundred' + (f' {_int_to_words(n % 100)}' if n % 100 else '')
+        if n < 1_000_000:
+            return _int_to_words(n // 1000) + ' thousand' + (f' {_int_to_words(n % 1000)}' if n % 1000 else '')
+        return _int_to_words(n // 1_000_000) + ' million' + (f' {_int_to_words(n % 1_000_000)}' if n % 1_000_000 else '')
+
+    def _replace(m):
+        raw = m.group(0).replace(',', '').replace('$', '')
+        if 'M' in raw.upper():
+            val = float(raw.upper().replace('M', ''))
+            if val == int(val):
+                return f'{_int_to_words(int(val))} million dollars'
+            return f'{val} million dollars'
+        if 'K' in raw.upper():
+            val = float(raw.upper().replace('K', ''))
+            rounded = round(val)
+            return f'{_int_to_words(rounded)} thousand dollars'
+        # Plain number with commas
+        val = int(float(raw))
+        if val >= 1000:
+            rounded = round(val / 1000) * 1000
+            return f'{_int_to_words(rounded // 1000)} thousand dollars'
+        return f'{_int_to_words(val)} dollars'
+
+    # Match $36K, $1.2M, $36,428, $100
+    return re.sub(r'\$[\d,]+(?:\.\d+)?[KkMm]?', _replace, text)
+
+
 def generate_voiceover(
     script: str,
-    voice: str = "shimmer",
+    voice: str = "onyx",      # Deep authoritative male — ideal for financial/trading content
     output_path: str | None = None
 ) -> str | None:
     """
@@ -70,8 +117,8 @@ def generate_voiceover(
                     "Content-Type":  "application/json",
                 },
                 json={
-                    "model": "tts-1",        # Changed from HD to Base. Drops token cost by 50% and breathes more organically.
-                    "input": script,
+                    "model": "tts-1-hd",     # HD model: better naturalness on numbers/names
+                    "input": _expand_numbers(script),   # Safety: expand $36K → 'thirty-six thousand dollars'
                     "voice": voice,
                     "response_format": "mp3",
                     "speed": 1.05,   # Accelerated to 1.05x enforcing the Brand Guidelines' urgent authority cadence

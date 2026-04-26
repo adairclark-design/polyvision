@@ -19,14 +19,24 @@ OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', '..', '.tmp', 'market
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'assets')
 
 def _get_font(size: int, bold=False):
-    """Attempt to load a system font, fallback to default."""
-    try:
-        # Mac system fonts
-        weight = "Bold" if bold else "Regular"
-        path = f"/System/Library/Fonts/Supplemental/Arial {weight}.ttf"
-        return ImageFont.truetype(path, size)
-    except:
-        return ImageFont.load_default()
+    """Load a system font — checks Linux (Railway) paths first, then Mac fallbacks."""
+    weight = "Bold" if bold else "Regular"
+    candidates = [
+        # Linux / Railway — fonts-liberation (installed via Dockerfile apt-get)
+        f"/usr/share/fonts/truetype/liberation/LiberationSans-{weight}.ttf",
+        f"/usr/share/fonts/truetype/liberation2/LiberationSans-{weight}.ttf",
+        f"/usr/share/fonts/truetype/dejavu/DejaVuSans-{weight}.ttf",
+        # macOS (local dev)
+        f"/System/Library/Fonts/Supplemental/Arial {weight}.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+    ]
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+    log.warning(f"[chart] No system font found for size={size} — PIL default active (text will be tiny).")
+    return ImageFont.load_default()
 
 def _draw_gradient(img, color_top, color_bottom):
     """Draws a vertical linear gradient on the image."""

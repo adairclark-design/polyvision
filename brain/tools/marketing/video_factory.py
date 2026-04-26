@@ -230,12 +230,18 @@ def create_video(
     """
     Render a 1080×1920 TikTok-ready MP4 using local FFmpeg (zero API cost).
 
+    Features:
+      - Ken Burns slow horizontal pan on background (cinematic motion)
+      - Chart overlay + caption text during main content
+      - 3-second branded outro: centered logo + polyvision.app text
+      - Audio padded with 3s silence for the outro segment
+
     Args:
         chart_image_path: Local path to odds/chart PNG (from chart_generator).
         audio_path:       Local path to TTS MP3 (from tts_generator). None = 30s silent.
         caption:          Hook text to burn into top of frame (≤60 chars).
         bg_image_url:     Public URL of background image (from R2 / Unsplash fallback).
-        logo_path:        Local path to watermark PNG (from outro_generator). Optional.
+        logo_path:        Local path to watermark/outro PNG (from outro_generator).
 
     Returns:
         Public R2 URL of the rendered MP4, or None on failure.
@@ -243,8 +249,10 @@ def create_video(
     import subprocess
     from datetime import datetime as _dt
 
+    OUTRO_DURATION = 3.0   # seconds of branded outro after audio ends
+
     # ── 1. Download background ────────────────────────────────────────────────
-    log.info(f"[FFmpeg] Downloading background from R2/CDN...")
+    log.info("[FFmpeg] Downloading background from R2/CDN...")
     bg_local = _download_bg(bg_image_url)
     if not bg_local:
         log.error("[FFmpeg] Cannot render — background unavailable.")
@@ -270,7 +278,23 @@ def create_video(
         _cleanup(bg_local)
         return None
 
-    # ── 4. FFmpeg inputs ──────────────────────────────────────────────────────
+    # ── 4. Get audio duration for outro timing ───────────────────────────────
+    audio_dur = 15.0   # safe default
+    if has_audio:
+        try:
+            probe = subprocess.run(
+                ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
+                capture_output=True, text=True, timeout=10,
+            )
+            audio_dur = float(probe.stdout.strip())
+        except Exception as e:
+            log.warning(f"[FFmpeg] ffprobe duration failed ({e}) — assuming {audio_dur}s")
+
+    total_dur = audio_dur + OUTRO_DURATION
+    od = audio_dur   # outro start time (shorthand)
+
+    # ── 5. FFmpeg inputs ──────────────────────────────────────────────────────
     # Index 0: background (looped static image)
     # Index 1: chart PNG
     # Index 2: logo PNG (if present)
@@ -288,25 +312,41 @@ def create_video(
         audio_idx = (logo_idx + 1) if logo_idx is not None else 2
         ff_inputs += ["-i", audio_path]
 
-    # ── 5. filter_complex ─────────────────────────────────────────────────────
-    # A) Scale background to fill exactly 1080×1920 (crop center)
+    # ── 6. filter_complex ─────────────────────────────────────────────────────
+    # A) Ken Burns: scale background to 1.4× then slow horizontal crop-pan
+    #    1080×1.4=1512, 1920×1.4=2688. Horizontal headroom=432px, vertical=384px center.
+    #    Pan speed = 12px/s → travels 216px over 18s. Capped at 216 (half headroom).
     fp = [
-        "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,"
-        "crop=1080:1920,setsar=1[bg]"
+        "[0:v]scale=1512:2688,setsar=1[bg_big]",
+        "[bg_big]crop=w=1080:h=1920:x='min(t*12\\,216)':y='384',setsar=1[bg]",
     ]
-    # B) Scale chart to 1080px wide (respects PNG transparency)
+
+    # B) Scale chart to full 1080px wide (PNG alpha preserved for transparency)
     fp.append("[1:v]scale=1080:-1[chart_s]")
-    # C) Overlay chart centered on background
-    fp.append("[bg][chart_s]overlay=x=(W-w)/2:y=(H-h)/2[v1]")
+
+    # C) Chart overlay — visible during main content only (0 to audio_dur)
+    main_enable = f":enable='between(t,0,{od:.2f})'" if has_audio else ""
+    fp.append(f"[bg][chart_s]overlay=x=(W-w)/2:y=(H-h)/2{main_enable}[v1]")
     cur = "v1"
 
-    # D) Logo watermark — bottom-right, 160px wide
+    # D) Logo layers: small watermark (main) + large centered (outro)
     if has_logo:
-        fp.append(f"[{logo_idx}:v]scale=160:-1[logo_s]")
-        fp.append(f"[{cur}][logo_s]overlay=x=W-w-20:y=H-h-30[v2]")
+        # Small corner watermark during main content
+        fp.append(f"[{logo_idx}:v]scale=140:-1[logo_small]")
+        fp.append(f"[{cur}][logo_small]overlay=x=W-w-20:y=H-h-30{main_enable}[v2]")
         cur = "v2"
 
-    # E) Caption drawtext — top 8%, centered, white bold + shadow + semi-transparent box
+        if has_audio:
+            # Large centered logo during 3-second outro
+            fp.append(f"[{logo_idx}:v]scale=360:-1[logo_big]")
+            fp.append(
+                f"[{cur}][logo_big]overlay="
+                f"x=(W-w)/2:y=(H-h)/2-140:"
+                f"enable='between(t,{od:.2f},{total_dur:.2f})'[v3]"
+            )
+            cur = "v3"
+
+    # E) Caption drawtext — top 8%, visible during main content only
     fp.append(
         f"[{cur}]drawtext="
         f"text='{safe_cap}':"
@@ -316,41 +356,62 @@ def create_video(
         f"fontcolor=white:"
         f"fontfile='{safe_font}':"
         f"shadowcolor=black@0.85:"
-        f"shadowx=3:"
-        f"shadowy=3:"
-        f"box=1:"
-        f"boxcolor=black@0.40:"
-        f"boxborderw=14"
-        f"[final]"
+        f"shadowx=3:shadowy=3:"
+        f"box=1:boxcolor=black@0.40:boxborderw=14"
+        f"{main_enable}"
+        f"[v_cap]"
     )
+    cur = "v_cap"
+
+    # F) "polyvision.app" brand text — visible during outro only (brand green)
+    if has_audio and has_logo:
+        outro_enable = f"enable='between(t,{od:.2f},{total_dur:.2f})'"
+        fp.append(
+            f"[{cur}]drawtext="
+            f"text='polyvision.app':"
+            f"x=(w-text_w)/2:"
+            f"y=h*0.72:"
+            f"fontsize=64:"
+            f"fontcolor=#10B981:"
+            f"fontfile='{safe_font}':"
+            f"shadowcolor=black@0.9:"
+            f"shadowx=2:shadowy=2:"
+            f"{outro_enable}"
+            f"[final]"
+        )
+    else:
+        fp.append(f"[{cur}]copy[final]")
 
     filter_complex = ";".join(fp)
 
-    # ── 6. Full FFmpeg command ────────────────────────────────────────────────
+    # ── 7. Full FFmpeg command ────────────────────────────────────────────────
     cmd = ["ffmpeg", "-y", *ff_inputs,
            "-filter_complex", filter_complex,
            "-map", "[final]"]
 
     if has_audio:
-        cmd += ["-map", f"{audio_idx}:a", "-shortest"]
+        # Pad audio with silence for the outro, set explicit total duration
+        cmd += ["-map", f"{audio_idx}:a",
+                "-af", f"apad=pad_dur={OUTRO_DURATION}",
+                "-t", f"{total_dur:.2f}"]
     else:
         cmd += ["-t", "30"]   # 30s silent fallback
 
     cmd += [
         "-c:v", "libx264", "-crf", "23", "-preset", "fast",
         "-c:a", "aac", "-b:a", "192k",
-        "-pix_fmt", "yuv420p",   # Required for TikTok/Instagram/Shorts compatibility
+        "-pix_fmt", "yuv420p",    # Required for TikTok/Instagram/Shorts
         "-r", "30",
         "-movflags", "+faststart",  # Moov atom at front — enables streaming
         output_path,
     ]
 
-    # ── 7. Render ─────────────────────────────────────────────────────────────
-    log.info("[FFmpeg] Rendering 1080×1920 MP4 (CPU — expect 20-60s on Railway)...")
+    # ── 8. Render ─────────────────────────────────────────────────────────────
+    log.info(f"[FFmpeg] Rendering {total_dur:.1f}s video (main={audio_dur:.1f}s + outro={OUTRO_DURATION:.0f}s)...")
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=360)
     except subprocess.TimeoutExpired:
-        log.error("[FFmpeg] Render timed out after 300s.")
+        log.error("[FFmpeg] Render timed out after 360s.")
         _cleanup(bg_local, output_path)
         return None
     except FileNotFoundError:
@@ -369,7 +430,7 @@ def create_video(
     size_mb = os.path.getsize(output_path) / 1_000_000
     log.info(f"[FFmpeg] ✅ Render complete — {size_mb:.1f} MB")
 
-    # ── 8. Upload to R2 ───────────────────────────────────────────────────────
+    # ── 9. Upload to R2 ───────────────────────────────────────────────────────
     log.info("[FFmpeg] Uploading rendered video to R2...")
     video_url = _upload_asset(output_path)
     _cleanup(output_path)
@@ -380,6 +441,7 @@ def create_video(
 
     log.info(f"[FFmpeg] ✅ Video live at: {video_url}")
     return video_url
+
 
 
 # ── Standalone Test ───────────────────────────────────────────────────────────
