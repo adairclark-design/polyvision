@@ -218,6 +218,45 @@ def _cleanup(*paths) -> None:
                 pass
 
 
+
+def _get_random_loop_url() -> str | None:
+    """
+    List MP4 video loops in R2 bucket under backgrounds/loops/ prefix and
+    return a public URL for a randomly chosen one.
+    Returns None if R2 is not configured or the folder is empty.
+    """
+    if not _R2_ENABLED:
+        return None
+    try:
+        import boto3
+        import random
+        from botocore.config import Config as BotoConfig
+        endpoint = f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=R2_ACCESS_KEY_ID,
+            aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+            config=BotoConfig(signature_version="s3v4"),
+            region_name="auto",
+        )
+        resp = s3.list_objects_v2(Bucket=R2_BUCKET_NAME, Prefix="backgrounds/loops/")
+        keys = [
+            obj["Key"] for obj in resp.get("Contents", [])
+            if obj["Key"].lower().endswith(".mp4")
+        ]
+        if not keys:
+            log.warning("[R2] No MP4 loops found in backgrounds/loops/ — falling back to static image.")
+            return None
+        chosen = random.choice(keys)
+        url = f"{R2_PUBLIC_URL.rstrip('/')}/{chosen}"
+        log.info(f"[R2] Selected background loop: {chosen}")
+        return url
+    except Exception as e:
+        log.warning(f"[R2] Could not list background loops ({e}) — falling back to static image.")
+        return None
+
+
 # ── Public Interface ──────────────────────────────────────────────────────────
 def create_video(
     chart_image_path: str,
@@ -251,12 +290,25 @@ def create_video(
 
     OUTRO_DURATION = 3.0   # seconds of branded outro after audio ends
 
-    # ── 1. Download background ────────────────────────────────────────────────
-    log.info("[FFmpeg] Downloading background from R2/CDN...")
-    bg_local = _download_bg(bg_image_url)
-    if not bg_local:
-        log.error("[FFmpeg] Cannot render — background unavailable.")
-        return None
+    # ── 1. Background: prefer a real video loop from R2 (more engaging, less shadowban risk)
+    #       Fall back to the DALL-E/static image with Ken Burns if no loops available.
+    log.info("[FFmpeg] Selecting background...")
+    loop_url = _get_random_loop_url()
+    is_video_bg = False
+    bg_local: str | None = None
+
+    if loop_url:
+        bg_local = _download_bg(loop_url)
+        is_video_bg = bool(bg_local and bg_local.endswith(".mp4"))
+        if is_video_bg:
+            log.info("[FFmpeg] Using real video loop background.")
+
+    if not is_video_bg:
+        log.info("[FFmpeg] Falling back to static background image (Ken Burns effect).")
+        bg_local = _download_bg(bg_image_url)
+        if not bg_local:
+            log.error("[FFmpeg] Cannot render — no background available.")
+            return None
 
     # ── 2. Output path ────────────────────────────────────────────────────────
     tmp_dir = os.path.join(os.path.dirname(__file__), '..', '..', '.tmp', 'marketing')
@@ -295,12 +347,16 @@ def create_video(
     od = audio_dur   # outro start time (shorthand)
 
     # ── 5. FFmpeg inputs ──────────────────────────────────────────────────────
-    # Index 0: background (looped static image)
+    # Index 0: background (video loop streamed or static image looped)
     # Index 1: chart PNG
     # Index 2: logo PNG (if present)
     # Index 2 or 3: audio MP3 (if present)
-
-    ff_inputs: list[str] = ["-loop", "1", "-i", bg_local, "-i", chart_image_path]
+    if is_video_bg:
+        # Real video loop: stream_loop -1 makes it loop indefinitely (truncated by -t later)
+        ff_inputs: list[str] = ["-stream_loop", "-1", "-i", bg_local, "-i", chart_image_path]
+    else:
+        # Static image: -loop 1 generates frames at output fps
+        ff_inputs: list[str] = ["-loop", "1", "-i", bg_local, "-i", chart_image_path]
 
     logo_idx = None
     if has_logo:
@@ -313,13 +369,20 @@ def create_video(
         ff_inputs += ["-i", audio_path]
 
     # ── 6. filter_complex ─────────────────────────────────────────────────────
-    # A) Ken Burns: scale background to 1.4× then slow horizontal crop-pan
-    #    1080×1.4=1512, 1920×1.4=2688. Horizontal headroom=432px, vertical=384px center.
-    #    Pan speed = 12px/s → travels 216px over 18s. Capped at 216 (half headroom).
-    fp = [
-        "[0:v]scale=1512:2688,setsar=1[bg_big]",
-        "[bg_big]crop=w=1080:h=1920:x='min(t*12\\,216)':y='384',setsar=1[bg]",
-    ]
+    if is_video_bg:
+        # A) Real video loop: scale to fill 1080×1920 and crop center.
+        #    No Ken Burns needed — the video already has motion.
+        fp = [
+            "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,"
+            "crop=1080:1920,setsar=1[bg]"
+        ]
+    else:
+        # A) Static image fallback: scale to 1.4× and apply slow horizontal crop-pan
+        #    (Ken Burns effect — 12px/s, capped at 216px = half the 432px headroom)
+        fp = [
+            "[0:v]scale=1512:2688,setsar=1[bg_big]",
+            "[bg_big]crop=w=1080:h=1920:x='min(t*12\\,216)':y='384',setsar=1[bg]",
+        ]
 
     # B) Scale chart to full 1080px wide (PNG alpha preserved for transparency)
     fp.append("[1:v]scale=1080:-1[chart_s]")
