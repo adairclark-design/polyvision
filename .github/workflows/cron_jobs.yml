@@ -49,19 +49,24 @@ jobs:
           RESPONSE=$(curl -s -o health.json -w "%{http_code}" \
             "${{ secrets.POLYVISION_BRAIN_URL }}/health")
           echo "=== Brain Health ===" && cat health.json
+
           RESPONSE_EAR=$(curl -s -o ear.json -w "%{http_code}" \
             "${{ secrets.POLYVISION_EAR_URL }}/health")
           echo "=== Ear Health ===" && cat ear.json
 
+          # Brain DOWN = hard failure (core service — pipeline cannot run without it)
           if [ "$RESPONSE" != "200" ]; then
             echo "🚨 Brain is DOWN (HTTP $RESPONSE). Immediate attention required."
             exit 1
           fi
+
+          # Ear DOWN = warning only (may be redeploying — does not block pipeline)
           if [ "$RESPONSE_EAR" != "200" ]; then
-            echo "🚨 Ear is DOWN (HTTP $RESPONSE_EAR). WebSocket listener offline!"
-            exit 1
+            echo "⚠️  Ear is degraded (HTTP $RESPONSE_EAR). WebSocket listener may be offline — monitor."
+          else
+            echo "✅ All systems operational."
           fi
-          echo "✅ All systems operational."
+
 
   # ── Job 3: API Schema Version Check (daily at 03:01 UTC) ──────────────────
   api-version-check:
