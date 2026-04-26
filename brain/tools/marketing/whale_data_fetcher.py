@@ -286,28 +286,14 @@ def pick_best_trade(trades: list[dict]) -> dict | None:
     if not trades:
         return None
 
-    PROB_MIN = 0.15   # Reject near-certain bets (≤15% implied prob side)
-    PROB_MAX = 0.85   # Reject near-certain bets (≥85% implied prob side)
+    PROB_MIN = 0.01   # Allowed floor: 1%
+    PROB_MAX = 0.80   # Hard cap: never pick trades >80% probability
 
     valid = [
         t for t in trades
         if t.get("market_title", "").strip()
         and PROB_MIN <= float(t.get("price", 0.5)) <= PROB_MAX
     ]
-
-    if not valid:
-        # Fallback: relax filter to 10%–90% if nothing qualifies
-        log.warning("[Picker] No trades in 15-85% probability band — relaxing to 10-90%.")
-        valid = [
-            t for t in trades
-            if t.get("market_title", "").strip()
-            and 0.10 <= float(t.get("price", 0.5)) <= 0.90
-        ]
-
-    if not valid:
-        # Final fallback: just take largest by USD (old behaviour) to avoid None
-        log.warning("[Picker] All trades are near-certain — using raw USD fallback.")
-        valid = [t for t in trades if t.get("market_title", "").strip()]
 
     if not valid:
         return None
