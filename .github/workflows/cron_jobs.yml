@@ -42,6 +42,7 @@ jobs:
   health-check:
     name: Dead Man's Switch
     runs-on: ubuntu-latest
+    continue-on-error: true   # health blips never spam inbox — check Actions UI manually
     if: github.event.schedule == '*/5 * * * *' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Ping The Brain health endpoint
