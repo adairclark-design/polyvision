@@ -25,8 +25,10 @@ jobs:
     steps:
       - name: Trigger profile recalculation
         run: |
-          RESPONSE=$(curl -s -o response.json -w "%{http_code}" \
-            -X POST "${{ secrets.POLYVISION_BRAIN_URL }}/cron/recalculate-profiles" \
+          BRAIN_URL="${{ secrets.POLYVISION_BRAIN_URL }}"
+          BRAIN_URL="${BRAIN_URL%/}"
+          RESPONSE=$(curl -s -L -o response.json -w "%{http_code}" \
+            -X POST "$BRAIN_URL/cron/recalculate-profiles" \
             -H "Content-Type: application/json")
           echo "HTTP $RESPONSE"
           cat response.json
@@ -47,12 +49,15 @@ jobs:
     steps:
       - name: Ping The Brain health endpoint
         run: |
-          RESPONSE=$(curl -s -o health.json -w "%{http_code}" \
-            "${{ secrets.POLYVISION_BRAIN_URL }}/health")
+          BRAIN_URL="${{ secrets.POLYVISION_BRAIN_URL }}"
+          BRAIN_URL="${BRAIN_URL%/}"
+          EAR_URL="${{ secrets.POLYVISION_EAR_URL }}"
+          EAR_URL="${EAR_URL%/}"
+          
+          RESPONSE=$(curl -s -L -o health.json -w "%{http_code}" "$BRAIN_URL/health")
           echo "=== Brain Health ===" && cat health.json
 
-          RESPONSE_EAR=$(curl -s -o ear.json -w "%{http_code}" \
-            "${{ secrets.POLYVISION_EAR_URL }}/health")
+          RESPONSE_EAR=$(curl -s -L -o ear.json -w "%{http_code}" "$EAR_URL/health")
           echo "=== Ear Health ===" && cat ear.json
 
           # Brain DOWN = hard failure (core service — pipeline cannot run without it)
