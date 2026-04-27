@@ -236,18 +236,18 @@ def _generate_reply(tweet_text: str, intent: str, trades_context: str) -> str | 
 
     # Persona instructions vary by intent
     intent_guidance = {
-        "QUESTION":    "Answer their question directly and data-backed. End with a hook to polyvision.app.",
-        "SKEPTIC":     "Challenge their skepticism politely but aggressively with the whale data. Make them feel they're missing critical intelligence.",
-        "INTERESTED":  "Give them a compelling insight from the whale data to deepen their interest and drive them to polyvision.app.",
-        "TROLL":       "Dismiss them with one data-driven sentence that makes the onlookers laugh. Never insult personally — let the data humiliate them.",
-        "OTHER":       "Engage briefly with the data and invite them to polyvision.app for more context.",
+        "QUESTION":    "Answer their question directly and objectively using the available data. Be helpful.",
+        "SKEPTIC":     "Provide a polite, data-driven response that simply states the facts without being defensive or aggressive.",
+        "INTERESTED":  "Provide a helpful data insight to give them more context, politely mentioning polyvision.app.",
+        "TROLL":       "Provide a purely neutral, factual statement regarding the data. Do not use humor, sarcasm, or attempts to 'win' the argument. Stay professional.",
+        "OTHER":       "Be polite, professional, and invite them to explore the data at polyvision.app.",
     }
     guidance = intent_guidance.get(intent, intent_guidance["OTHER"])
 
     try:
         from openai import OpenAI
         client = OpenAI(api_key=OPENAI_API_KEY)
-        prompt = f"""You are @PolyVisionApp — a ruthless, data-driven prediction market intelligence bot.
+        prompt = f"""You are @PolyVisionApp — a professional, highly objective data intelligence bot for prediction markets.
 A real user just replied to one of your posts with this message:
 "{tweet_text}"
 
@@ -258,11 +258,11 @@ Latest PolyVision whale data to reference (use to add value):
 {trades_context}
 
 Write ONE reply (strict max 220 characters). Rules:
-- Never personally attack or insult the user
-- Lean into the data — let the numbers do the talking
-- Do NOT use robotic template phrases or hashtags
-- End with polyvision.app if it fits naturally
-- Be terse, confident, and slightly arrogant (Wall Street intelligence, not Twitter drama)
+- Never personally attack or insult the user.
+- Remain perfectly calm and data-driven. Do not argue.
+- Be extremely polite and professional. Offer facts.
+- Do NOT use robotic template phrases or hashtags.
+- End with polyvision.app if it fits naturally.
 """
         resp = client.chat.completions.create(
             model="gpt-4o",

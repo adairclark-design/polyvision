@@ -184,38 +184,40 @@ async def lifespan(app: FastAPI):
         name='Trojan Horse Discord Marketing Reminder (Tues/Thu 10AM EST)',
         replace_existing=True,
     )
-    # ── X (Twitter) Daily Recap Thread (19:00 EST) ─────────────────────────────
-    scheduler.add_job(
-        _run_daily_recap,
-        trigger=CronTrigger(hour=19, minute=0, timezone='America/New_York'),
-        id='twitter_daily_recap',
-        name='X Daily Recap Thread (19:00 EST)',
-        replace_existing=True,
-    )
-    # ── X (Twitter) Auto-Reply Monitor (Every 10 minutes) ──────────────────────
-    scheduler.add_job(
-        _run_twitter_monitor,
-        trigger=CronTrigger(minute='*/10'),
-        id='twitter_monitor',
-        name='X Reply-Value Engine (Every 10 min)',
-        replace_existing=True,
-    )
-    # ── X (Twitter) News-Jacking Engine (Every 25 minutes) ─────────────────
-    scheduler.add_job(
-        _run_twitter_news_jack,
-        trigger=CronTrigger(minute='*/25'),
-        id='twitter_news_jack',
-        name='X News-Jacking Engine (Every 25 min)',
-        replace_existing=True,
-    )
-    # ── X Mention-Reply Agent (Every 15 minutes) ──────────────────────────────
-    scheduler.add_job(
-        _run_reply_agent,
-        trigger=CronTrigger(minute='*/15'),
-        id='twitter_reply_agent',
-        name='X Mention-Reply Agent (Every 15 min)',
-        replace_existing=True,
-    )
+    # ── X (Twitter) Bots — gated by TWITTER_BOT_ENABLED env var ─────────────────
+    # Set TWITTER_BOT_ENABLED=true in Railway to re-activate when suspension is lifted.
+    TWITTER_BOT_ENABLED = os.getenv('TWITTER_BOT_ENABLED', 'false').lower() == 'true'
+    if TWITTER_BOT_ENABLED:
+        scheduler.add_job(
+            _run_daily_recap,
+            trigger=CronTrigger(hour=19, minute=0, timezone='America/New_York'),
+            id='twitter_daily_recap',
+            name='X Daily Recap Thread (19:00 EST)',
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_twitter_monitor,
+            trigger=CronTrigger(minute='*/10'),
+            id='twitter_monitor',
+            name='X Reply-Value Engine (Every 10 min)',
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_twitter_news_jack,
+            trigger=CronTrigger(minute='*/25'),
+            id='twitter_news_jack',
+            name='X News-Jacking Engine (Every 25 min)',
+            replace_existing=True,
+        )
+        scheduler.add_job(
+            _run_reply_agent,
+            trigger=CronTrigger(minute='*/15'),
+            id='twitter_reply_agent',
+            name='X Mention-Reply Agent (Every 15 min)',
+            replace_existing=True,
+        )
+    else:
+        log.info('X (Twitter) bots DISABLED — TWITTER_BOT_ENABLED=false (suspended).')
 
     # ── Kalshi Ear — poll every 60 seconds ────────────────────────────────────
     scheduler.add_job(
@@ -231,10 +233,11 @@ async def lifespan(app: FastAPI):
     log.info('Market resolution cron scheduled — fires daily at 06:00 EST.')
     log.info('Price impact tracker cron scheduled — fires daily at 07:30 EST.')
     log.info('Trojan Horse CRM cron scheduled — fires Tue/Thu at 10:00 EST.')
-    log.info('X (Twitter) Daily Thread scheduled — fires daily at 19:00 EST.')
-    log.info('X (Twitter) Auto-Reply Engine scheduled — fires every 10 min.')
-    log.info('X (Twitter) News-Jacking Engine scheduled — fires every 25 min.')
-    log.info('X (Twitter) Mention-Reply Agent scheduled — fires every 15 min.')
+    if TWITTER_BOT_ENABLED:
+        log.info('X (Twitter) Daily Thread scheduled — fires daily at 19:00 EST.')
+        log.info('X (Twitter) Auto-Reply Engine scheduled — fires every 10 min.')
+        log.info('X (Twitter) News-Jacking Engine scheduled — fires every 25 min.')
+        log.info('X (Twitter) Mention-Reply Agent scheduled — fires every 15 min.')
     log.info('Kalshi Ear scheduled — polls every 60s.')
 
     yield
@@ -246,7 +249,12 @@ app = FastAPI(title='PolyVision Brain', version='1.0.0', lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'],   # tighten in production
+    allow_origins=[
+        'https://polyvision.app',
+        'https://www.polyvision.app',
+        'https://polyvision-production.up.railway.app',
+        'https://polyvision-deploy.pages.dev',
+    ],
     allow_methods=['*'],
     allow_headers=['*'],
 )
@@ -778,6 +786,80 @@ async def health():
         'ws_clients': len(ws_clients),
         'ts': datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get('/stats/public')
+async def public_stats():
+    """
+    Live aggregate stats for the landing page hero section.
+    Cached in Redis for 5 min. Safe to call directly from the browser.
+    Falls back gracefully if DB is unavailable.
+    """
+    STATS_CACHE_KEY = 'cache:public_stats'
+    cached = await redis_client.get(STATS_CACHE_KEY)
+    if cached:
+        from fastapi.responses import JSONResponse as _JSONResponse
+        return _JSONResponse(content=json.loads(cached))
+    stats = {
+        'tracked_volume_usd': 0,
+        'unique_wallets':     0,
+        'markets_tracked':    0,
+    }
+    if DATABASE_URL:
+        try:
+            with psycopg2.connect(DATABASE_URL, connect_timeout=5) as conn:
+                with conn.cursor() as cur:
+                    cur.execute('SELECT COALESCE(SUM(total_volume_usd),0), COUNT(*) FROM wallets;')
+                    row = cur.fetchone()
+                    stats['tracked_volume_usd'] = float(row[0] or 0)
+                    stats['unique_wallets']      = int(row[1] or 0)
+                    cur.execute(
+                        "SELECT COUNT(DISTINCT market_id) FROM trades "
+                        "WHERE created_at > NOW() - INTERVAL '30 days';"
+                    )
+                    stats['markets_tracked'] = int(cur.fetchone()[0] or 0)
+        except Exception as e:
+            log.warning(f'public_stats DB error: {e}')
+    from fastapi.responses import JSONResponse as _JSONResponse
+    await redis_client.setex(STATS_CACHE_KEY, 300, json.dumps(stats))
+    return _JSONResponse(content=stats)
+
+
+@app.post('/email/subscribe', status_code=200)
+async def email_subscribe(request: Request):
+    """Capture pre-auth landing page email leads via Resend audience list."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {'status': 'invalid'}
+    email = (body.get('email') or '').strip().lower()
+    if not email or '@' not in email:
+        return {'status': 'invalid'}
+    RESEND_API_KEY = os.getenv('RESEND_API_KEY', '')
+    if not RESEND_API_KEY:
+        log.warning('email_subscribe: RESEND_API_KEY not set — lead dropped.')
+        return {'status': 'ok'}
+    
+    # Optional: if you have an audience ID, we pass it in the payload. Otherwise it goes to Global Contacts.
+    RESEND_AUDIENCE_ID = os.getenv('RESEND_AUDIENCE_ID', '')
+    payload = {'email': email, 'unsubscribed': False}
+    if RESEND_AUDIENCE_ID:
+        payload['audience_id'] = RESEND_AUDIENCE_ID
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            await client.post(
+                'https://api.resend.com/contacts',
+                headers={
+                    'Authorization': f'Bearer {RESEND_API_KEY}',
+                    'Content-Type':  'application/json',
+                },
+                json=payload,
+            )
+        log.info(f'[email_subscribe] Captured: {email}')
+    except Exception as e:
+        log.warning(f'[email_subscribe] Resend error: {e}')
+    return {'status': 'ok'}
 
 
 @app.get('/twitter/test')
@@ -1334,22 +1416,28 @@ async def analyze_wallet(query: str, platform: str = "polymarket"):
                 )
                 db_wr = float(db_user['win_rate'] or 0) if db_user else 0.0
                 final_win_rate = db_wr if db_wr > 0 else float(xray.get('win_rate') or 0)
+                win_rate_source = 'empirical'  # default: real resolved trade data
 
                 # Heuristic API Drift Fallback: If the API paginates out a whale's historical wins,
                 # it mathematically returns 0%. A $16M profit with 0% win rate proves API truncation.
+                # IMPORTANT: Estimated rates are flagged and NEVER drive copy_trade_recommended.
                 if final_win_rate < 0.01 and final_vol > 1000:
                     if final_pnl > 0:
-                        # Massive profit guarantees they maintain a >50% win rate mechanically
                         final_win_rate = 0.52 + min((final_pnl / final_vol), 0.47)
                     else:
-                        # Negative PnL means they lost, but realistically won *some* trades 
                         final_win_rate = max(0.15, 0.48 - abs(final_pnl / final_vol))
+                    win_rate_source = 'estimated'  # suppresses copy_trade_recommended
 
                 return {
                     'wallet_address': target_wallet,
                     'handle': display_handle,
                     'source': 'POLYMARKET',
                     'win_rate': final_win_rate,
+                    'win_rate_source': win_rate_source,
+                    # Never recommend copy-trading when win rate is mathematically estimated
+                    'copy_trade_recommended': (
+                        final_win_rate >= 0.60 and win_rate_source == 'empirical'
+                    ),
                     'roi_all_time': roi_all_time,
                     'total_trades': xray.get('total_markets') or len(xray.get('history', [])),
                     'total_volume': final_vol,

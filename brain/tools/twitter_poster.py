@@ -104,59 +104,53 @@ def format_tweet(payload: dict) -> str:
     
     usd_str = f"${usd_value:,.0f}"
 
-    # ── 6 Adversarial Static Fallbacks ──────────────────────────────────────────
-    # Used when OpenAI is unavailable. Each is pre-written in the adversarial
-    # 'Smart Money vs Retail' voice so the fallback never looks like a boring alert.
-    ADVERSARIAL_FALLBACKS = [
+    # ── 6 Neutral Static Fallbacks ──────────────────────────────────────────
+    # Used when OpenAI is unavailable. Each is pre-written in a professional
+    # 'Data-Driven' voice to ensure compliance with X TOS.
+    NEUTRAL_FALLBACKS = [
         (
-            f"{emoji} While retail traders were distracted by headlines, smart money quietly dropped "
-            f"{usd_str} on {outcome} for '{market}'. The market moves before you even hear about it.\n\n"
-            f"Track the whales before they disappear: polyvision.app\n\n{hashtags}"
+            f"{emoji} Notable volume detected: {usd_str} placed on {outcome} for '{market}'.\n\n"
+            f"Track real-time prediction market data: polyvision.app\n\n{hashtags}"
         ),
         (
-            f"{emoji} {usd_str} on {outcome}. {platform} whale. {pct} conviction. "
-            f"Retail is always last to know — that's why they're always last to profit.\n\n"
-            f"Stop trading blind: polyvision.app\n\n{hashtags}"
+            f"{emoji} Market Update: A new position of {usd_str} has been opened on {outcome} at {pct} conviction on {platform}.\n\n"
+            f"View live sentiment data: polyvision.app\n\n{hashtags}"
         ),
         (
-            f"{emoji} Someone just deployed {usd_str} on {outcome} for '{market}' at {pct}. "
-            f"This isn't a rumor. This is a real position. The exit liquidity is whoever doesn't see it.\n\n"
+            f"{emoji} Large trade alert: {usd_str} traded on {outcome} for '{market}' at {pct} probability.\n\n"
             f"polyvision.app\n\n{hashtags}"
         ),
         (
-            f"{emoji} A {platform} whale just put {usd_str} on '{market}' going {outcome}. "
-            f"Meanwhile, the mainstream is debating yesterday's news. "
-            f"Smart money doesn't wait for permission.\n\npolyvision.app\n\n{hashtags}"
+            f"{emoji} A {platform} participant just allocated {usd_str} on '{market}' going {outcome}.\n\n"
+            f"Dive into the data natively: polyvision.app\n\n{hashtags}"
         ),
         (
-            f"{emoji} {usd_str} position just opened on {outcome} @ {pct} in '{market}'. "
-            f"The whales aren't confused. Are you? "
-            f"Follow the money, not the noise: polyvision.app\n\n{hashtags}"
+            f"{emoji} Position update: {usd_str} volume logged for {outcome} @ {pct} in '{market}'.\n\n"
+            f"Follow the data: polyvision.app\n\n{hashtags}"
         ),
         (
-            f"{emoji} Insider or genius? A whale just bet {usd_str} on {outcome} for '{market}'. "
-            f"The market will answer that question eventually. "
-            f"Be ready before it does: polyvision.app\n\n{hashtags}"
+            f"{emoji} High-value transaction: {usd_str} placed on {outcome} for '{market}'.\n\n"
+            f"Monitor prediction market activity: polyvision.app\n\n{hashtags}"
         ),
     ]
-    fallback_tweet = random.choice(ADVERSARIAL_FALLBACKS)
+    fallback_tweet = random.choice(NEUTRAL_FALLBACKS)
     if len(fallback_tweet) > 280:
         fallback_tweet = fallback_tweet[:276] + "..."
 
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
     if not OPENAI_API_KEY:
-        log.warning("[Twitter] OPENAI_API_KEY not set. Using adversarial fallback template.")
+        log.warning("[Twitter] OPENAI_API_KEY not set. Using neutral fallback template.")
         return fallback_tweet
 
     try:
         from openai import OpenAI
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        client = OpenAI(api_key=OPENAI_API_KEY, timeout=12.0, max_retries=1)
         
         hook_types = [
-            "Retail Exit Liquidity (Frame retail traders as the suckers being left holding the bag while this whale quietly rotates against them)",
-            "Insider Knowledge (Imply aggressively that this whale knows an industry secret that the general public and mainstream media do not)",
-            "Contrarian Mockery (Mock the current mainstream news narrative explicitly using this massive trade as proof that the media is wrong)",
-            "Market Predation (Suggest this whale is actively hunting and feasting on smaller retail traders who are trading purely on emotion)"
+            "Data Insight (Focus on the sheer scale of the volume and the explicit probability figure)",
+            "Market Movement (Highlight how this position reflects broader market sentiment)",
+            "Objective Alert (A straightforward, breaking-news style update on a major market transaction)",
+            "Analytical Tone (Provide a calm, professional observation of the trade mechanics)"
         ]
         chosen_hook = random.choice(hook_types)
 
@@ -168,12 +162,12 @@ Size: {usd_str}
 Platform: {platform}
 
 INSTRUCTIONS:
-1. Write ONE highly engaging tweet (max 180 characters) about this trade.
-2. Follow the Marketing Growth Skill principles: Frame the data as a highly aggressive Us vs Them argument ('Smart Money' vs 'Retail'). Use purely data-backed inflammatory takes. Let them know retail is about to get wiped out.
-3. PATTERN INTERRUPTION: Strictly use this adversarial hook style for this tweet: [{chosen_hook}].
-4. "TAG & BAIT" STRATEGY: Mention {tags} naturally to bait a reply or retweet.
-5. Do NOT include hyperlinks or hashtags. Do NOT use emojis at the start.
-6. Make it arrogant, urgent, and professional (A ruthless Wall Street predator's tone).
+1. Write ONE highly engaging but strictly professional tweet (max 180 characters) about this trade.
+2. Tone: Calm, objective, data-driven, and financial-news oriented.
+3. INSTRUCTION: Use this hook style for this tweet: [{chosen_hook}].
+4. Mention {tags} naturally to provide context.
+5. Do NOT use adversarial language, do NOT mock retail traders, and do NOT use "us vs them" framing. Do not use spammy or abusive language.
+6. Do NOT include hyperlinks or hashtags. Do NOT use emojis at the start.
 """
         resp = client.chat.completions.create(
             model="gpt-4o",
@@ -194,7 +188,7 @@ INSTRUCTIONS:
         return final_tweet
 
     except Exception as e:
-        log.error(f"[Twitter] LLM generation failed: {e}. Using fallback.")
+        log.warning(f"[Twitter] LLM generation failed: {e}. Using fallback.")
         return fallback_tweet
 
 
@@ -300,6 +294,11 @@ def maybe_tweet(payload: dict, dry_run: bool = False) -> dict:
 
     log.info(f"[Twitter] Trade qualifies ({source}): ${usd_value:,.0f} >= ${threshold:,.0f} — proceeding to post")
 
+    # Deduplication check — keyed on the unique trade ID, not market_id
+    trade_id = payload.get("source_trade_id") or payload.get("alert_id") or market_id
+    if _is_duplicate(trade_id, source):
+        return {"status": "skipped_duplicate"}
+
     tweet_text = format_tweet(payload)
 
     # Dry-run: always show the formatted tweet, no credentials needed
@@ -313,11 +312,6 @@ def maybe_tweet(payload: dict, dry_run: bool = False) -> dict:
     if not _credentials_set():
         log.warning("[Twitter] Credentials not set — skipping. Check TWITTER_API_KEY / TWITTER_ACCESS_TOKEN env vars on Railway.")
         return {"status": "skipped_no_credentials"}
-
-    # Deduplication check — keyed on the unique trade ID, not market_id
-    trade_id = payload.get("source_trade_id") or payload.get("alert_id") or market_id
-    if _is_duplicate(trade_id, source):
-        return {"status": "skipped_duplicate"}
 
     try:
         tweet_id = post_tweet(tweet_text, payload=payload)

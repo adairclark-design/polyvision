@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from __future__ import annotations
 """
 metrics_fetcher.py — Phase 2 RL Telemetry Harvester
 Queries Twitter/X API v2 for real impression and like counts on

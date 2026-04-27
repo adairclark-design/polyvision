@@ -142,7 +142,7 @@ def generate_summary(payload: dict, live_context: str = "") -> str:
         return fallback_summary(payload)
 
     from openai import OpenAI, RateLimitError, APITimeoutError
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    client = OpenAI(api_key=OPENAI_API_KEY, timeout=12.0, max_retries=1)
 
     extra_instruction = ""
     for attempt in range(MAX_RETRIES):
@@ -179,7 +179,7 @@ def generate_summary(payload: dict, live_context: str = "") -> str:
         except APITimeoutError:
             log.warning(f"OpenAI timeout on attempt {attempt+1}.")
         except Exception as e:
-            log.error(f"OpenAI error on attempt {attempt+1}: {e}")
+            log.warning(f"OpenAI error on attempt {attempt+1}: {e}")
             break
 
     log.warning("All GPT attempts failed. Using fallback summary.")

@@ -77,12 +77,15 @@ def generate_thread_copy(trades: list) -> list:
         else:
             price_str = f"{price:.0%}"
             
-        handle = t.get('handle') or 'Unknown'
+        raw_handle = t.get('handle') or 'Unknown'
+        # Crucial fix for X Anti-Spam: strip '@' symbols to prevent unprompted algorithmic mentions
+        clean_handle = raw_handle.replace("@", "") if raw_handle != "Unknown" else "Unknown"
         wallet = t.get('wallet_address', '')
         
         # Obfuscate the literal 0x hash to prevent X (Twitter) API from issuing a 403 Forbidden 
         # for new developer accounts under their anti-crypto-bot policy.
-        safe_identifier = handle if handle and handle != "Unknown" else f"AnonWhale_{wallet.replace('0x', '')[:6]}"
+        safe_identifier = clean_handle if clean_handle != "Unknown" else f"AnonWhale_{wallet.replace('0x', '')[:6]}"
+
 
         trades_text += (
             f"Trade {idx}:\n"
@@ -91,16 +94,14 @@ def generate_thread_copy(trades: list) -> list:
             f"- Prediction: {outcome} @ {price_str}\n"
             f"- Position Size: ${usd:,.0f} USD\n\n"
         )
-        
-    prompt = (
-        "You are an elite, algorithmic-focused Twitter Ghostwriter for @PolyVisionApp. "
-        "Your task is to write a highly engaging multi-tweet thread summarizing the top 5 largest "
-        "prediction market whale trades of the past 24 hours.\n\n"
+            "You are an objective, data-focused data analyst for @PolyVisionApp. "
+        "Your task is to write a clean, professional multi-tweet thread summarizing the top 5 largest "
+        "prediction market trades of the past 24 hours.\n\n"
         "Input Data:\n" + trades_text +
         "Rules:\n"
-        "1. First tweet must be a viral Hook summarizing the volume (e.g. 'Over $X was deployed by massive whales in the last 24h. Here are the 5 biggest bets: 🧵').\n"
-        "2. The next tweets must break down exactly 1 trade per tweet in highly engaging formats. Use their 'Entity' name. CRITICAL: NEVER hallucinate or write a raw '0x' crypto wallet address, as it triggers API bans. Instruct users to verify them on the PolyVision Analyzer.\n"
-        "3. The final tweet in the array must be a CTA (Call To Action): 'Want real-time live alerts before the market moves? Get the PolyVision Discord bot: polyvision.app | Or grade your own wallet\\'s all-time win rate against these whales natively at polyvision.app/analyzer'.\n"
+        "1. First tweet must simply and professionally state the overall volume (e.g. 'Daily Recap: Total volume deployed by large wallets in the last 24h. Here are the 5 largest trades: 🧵').\n"
+        "2. The next tweets must break down exactly 1 trade per tweet purely objectively. Use their 'Entity' name. CRITICAL: NEVER write a raw '0x' crypto wallet address, as it triggers API bans. Format it professionally.\n"
+        "3. The final tweet in the array should include a simple CTA without urgency: 'Track real-time data or analyze wallets natively at polyvision.app/analyzer'.\n"
         "4. Strict Character limit per tweet: 270 chars max.\n\n"
         "Output Requirements:\n"
         "Return STRICTLY a JSON object matching this exact schema, with no markdown code blocks wrapping it:\n"
@@ -110,7 +111,6 @@ def generate_thread_copy(trades: list) -> list:
         "    \"[Tweet 2 text...]\"\n"
         "  ]\n"
         "}"
-    )
     
     try:
         resp = client.chat.completions.create(
@@ -180,7 +180,7 @@ def execute_twitter_thread(tweets: list, top_trade: dict = None, dry_run: bool =
         
         # Sequentially thread remaining tweets
         for i, tweet_copy in enumerate(tweets[1:], 2):
-            time.sleep(2) # Avoid aggressive API tripping
+            time.sleep(15) # Increased from 2s to 15s to be extremely safe with X rate limits
             
             is_last = (i == len(tweets))
             kwargs = {

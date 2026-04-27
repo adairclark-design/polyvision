@@ -281,21 +281,41 @@
     <button class="btn-primary" onclick="window.location.assign('/dashboard/')"><img src="assets/whale_logo.png" style="height: 16px; margin-right: 8px; vertical-align: middle;" alt=""> Watch Live Feed</button>
     <a class="btn-secondary" href="#pricing">View Pricing</a>
   </div>
+  <!-- EMAIL CAPTURE -->
+  <div style="margin-top:28px;animation:fadeUp 0.7s 0.35s ease both">
+    <form id="emailCapForm" onsubmit="submitEmailCap(event)"
+          style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+      <input id="capEmail" type="email" placeholder="your@email.com" required
+             style="background:#161b22;border:1px solid rgba(255,255,255,0.1);border-radius:10px;
+                    padding:12px 18px;color:#e6edf3;font-size:15px;width:240px;outline:none;
+                    font-family:inherit"/>
+      <button type="submit" id="capBtn"
+              style="background:#00ffa3;color:#0d1117;border:none;border-radius:10px;
+                     padding:12px 22px;font-size:15px;font-weight:700;cursor:pointer">
+        Get Free Alerts
+      </button>
+    </form>
+    <div id="capThanks" style="display:none;color:#00ffa3;font-size:14px;font-weight:600;margin-top:8px">
+      ✅ You're in — whale alerts coming to your inbox.
+    </div>
+    <div style="color:#8b949e;font-size:12px;margin-top:6px">No spam. Unsubscribe anytime.</div>
+  </div>
+
   <div class="stats-bar">
     <div class="stat-cell">
-      <div class="stat-number">$2.4B+</div>
+      <div class="stat-number" id="statVolume">$2.4B+</div>
       <div class="stat-label">Tracked Volume</div>
     </div>
     <div class="stat-cell">
-      <div class="stat-number">1,200+</div>
+      <div class="stat-number" id="statWallets">1,200+</div>
       <div class="stat-label">Whale Wallets</div>
     </div>
     <div class="stat-cell">
-      <div class="stat-number">&lt;2s</div>
+      <div class="stat-number" id="statLatency">&lt;2s</div>
       <div class="stat-label">Alert Latency</div>
     </div>
     <div class="stat-cell">
-      <div class="stat-number">50+</div>
+      <div class="stat-number" id="statMarkets">50+</div>
       <div class="stat-label">Markets Tracked</div>
     </div>
   </div>
@@ -435,5 +455,41 @@
   </p>
 </footer>
 
+<script>
+async function submitEmailCap(e) {
+  e.preventDefault();
+  const email = document.getElementById('capEmail').value;
+  const btn   = document.getElementById('capBtn');
+  btn.textContent = '⏳ Saving…'; btn.disabled = true;
+  try {
+    await fetch('https://polyvision-production.up.railway.app/email/subscribe', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ email }),
+    });
+  } catch(_) {}
+  document.getElementById('emailCapForm').style.display = 'none';
+  document.getElementById('capThanks').style.display = 'block';
+}
+
+// Live stats — graceful fallback to hardcoded values on any error
+(async () => {
+  try {
+    const r = await fetch('https://polyvision-production.up.railway.app/stats/public',
+                          { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d.tracked_volume_usd > 0) {
+      const b = d.tracked_volume_usd / 1e9;
+      document.getElementById('statVolume').textContent =
+        b >= 1 ? `$${b.toFixed(1)}B+` : `$${(d.tracked_volume_usd / 1e6).toFixed(0)}M+`;
+    }
+    if (d.unique_wallets > 0)
+      document.getElementById('statWallets').textContent = d.unique_wallets.toLocaleString() + '+';
+    if (d.markets_tracked > 0)
+      document.getElementById('statMarkets').textContent = d.markets_tracked + '+';
+  } catch(_) {}  // silent — hardcoded values remain
+})();
+</script>
 </body>
 </html>

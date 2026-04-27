@@ -527,6 +527,124 @@ function fmtWinRate(wr, resolvedCount) {
   return `${pct}%`;
 }
 
+// ── Feed Cap Upgrade Modal ────────────────────────────────────────────────────
+// Fires once per session when a free user's feed hits 10 events.
+// Shows exactly what they just missed to maximise conversion pressure.
+function showFeedCapModal(blockedEvent) {
+  if (state._feedCapShown) return;
+  state._feedCapShown = true;
+
+  const tierLabel = blockedEvent?.tier || 'WHALE';
+  const market    = (blockedEvent?.market || 'an active market').slice(0, 60);
+  const usd       = blockedEvent?.usdValue
+    ? '$' + blockedEvent.usdValue.toLocaleString('en-US', { maximumFractionDigits: 0 })
+    : 'large';
+  const isCluster = tierLabel === 'CLUSTER';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'feedCapOverlay';
+  overlay.style.cssText = [
+    'position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center',
+    'background:rgba(13,17,23,0.92);backdrop-filter:blur(8px)',
+  ].join(';');
+
+  overlay.innerHTML = `
+    <div style="background:#161b22;border:1px solid rgba(0,255,163,0.35);border-radius:20px;
+                padding:40px 36px;max-width:480px;width:90%;text-align:center;position:relative;
+                animation:fadeUp 0.3s ease">
+      <div style="font-size:48px;margin-bottom:16px">${isCluster ? '🚨' : '🐋'}</div>
+      <h2 style="color:#e6edf3;font-size:22px;font-weight:800;margin:0 0 12px">
+        You just missed a ${isCluster ? 'CLUSTER ALERT' : tierLabel + ' trade'}
+      </h2>
+      <p style="color:#8b949e;font-size:15px;line-height:1.6;margin:0 0 8px">
+        A <strong style="color:#e6edf3">${usd}</strong> move just hit
+        <strong style="color:#e6edf3">"${market}"</strong>.
+        Your free feed is full — upgrade PRO to keep watching live.
+      </p>
+      <div style="background:rgba(0,255,163,0.07);border:1px solid rgba(0,255,163,0.2);
+                  border-radius:12px;padding:14px 20px;margin:20px 0;text-align:left">
+        <div style="color:#00ffa3;font-weight:700;font-size:14px;margin-bottom:8px">PRO unlocks:</div>
+        <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:6px">
+          <li style="color:#e6edf3;font-size:13px">✓ 50 live events (5× more)</li>
+          <li style="color:#e6edf3;font-size:13px">✓ Email &amp; push alerts — even when your browser is closed</li>
+          <li style="color:#e6edf3;font-size:13px">✓ Whale consensus widget + full leaderboard</li>
+          <li style="color:#e6edf3;font-size:13px">✓ Discord PRO channel access</li>
+        </ul>
+      </div>
+      <button onclick="window.checkoutPro(); document.getElementById('feedCapOverlay').remove();"
+              style="width:100%;background:#00ffa3;color:#0d1117;border:none;border-radius:12px;
+                     padding:14px;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:10px">
+        Upgrade to PRO — $19/mo →
+      </button>
+      <button onclick="document.getElementById('feedCapOverlay').remove();"
+              style="width:100%;background:none;border:none;color:#8b949e;font-size:13px;cursor:pointer;padding:8px">
+        Continue with limited feed
+      </button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+// ── Paper P&L Share Card ──────────────────────────────────────────────────────
+// Generates a canvas share card from the paper portfolio P&L and triggers download.
+window.generateShareCard = async function () {
+  const portfolio = state.paperPortfolio;
+  if (!portfolio) { alert('No paper portfolio data yet. Follow a whale trade first!'); return; }
+
+  const totalPnl = portfolio.total_pnl || 0;
+  const pct      = portfolio.total_pnl_pct != null ? portfolio.total_pnl_pct : 0;
+  const isGain   = totalPnl >= 0;
+
+  const canvas   = document.createElement('canvas');
+  canvas.width   = 1200; canvas.height = 630;
+  const ctx      = canvas.getContext('2d');
+
+  // Background
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0, 0, 1200, 630);
+
+  // Mint glow
+  const grd = ctx.createRadialGradient(600, 0, 0, 600, 0, 600);
+  grd.addColorStop(0, 'rgba(0,255,163,0.09)');
+  grd.addColorStop(1, 'rgba(0,255,163,0)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, 1200, 630);
+
+  // Label
+  ctx.fillStyle = '#8b949e';
+  ctx.font      = '500 28px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Paper portfolio — following smart money on', 600, 200);
+
+  // Brand
+  ctx.fillStyle = '#00ffa3';
+  ctx.font      = 'bold 32px Inter, sans-serif';
+  ctx.fillText('PolyVision', 600, 244);
+
+  // P&L
+  ctx.fillStyle = isGain ? '#00ffa3' : '#ff4d6d';
+  ctx.font      = 'bold 112px Inter, sans-serif';
+  ctx.fillText(`${isGain ? '+' : ''}${pct.toFixed(1)}%`, 600, 400);
+
+  // Sub-label
+  ctx.fillStyle = '#8b949e';
+  ctx.font      = '400 24px Inter, sans-serif';
+  ctx.fillText('all-time paper P&L', 600, 450);
+
+  // CTA
+  ctx.fillStyle = '#e6edf3';
+  ctx.font      = '600 22px Inter, sans-serif';
+  ctx.fillText('polyvision.app — free to start', 600, 580);
+
+  canvas.toBlob(blob => {
+    const url  = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href     = url;
+    link.download = 'polyvision-paper-pnl.png';
+    link.click();
+    URL.revokeObjectURL(url);
+  });
+};
+
 // ── Rate-Limited Win Rate Lazy-Loader ────────────────────────────────────────
 // After cards render, queue win rate fetches 1/sec for cards with no data.
 // Uses Brain /wallet/{wallet}/xray endpoint (Redis-cached 60s).
@@ -1087,8 +1205,14 @@ function connectLiveFeed() {
         };
 
         state.events.unshift(ev);
-        const maxEvents = window.isPro() ? 50 : 5;
-        if (state.events.length > maxEvents) state.events.pop();
+        const maxEvents = window.isPro() ? 50 : 10;
+        if (!window.isPro() && state.events.length > maxEvents) {
+          state.events.pop();
+          // Fire upgrade modal on the first cap hit — show what just got blocked
+          showFeedCapModal(ev);
+        } else if (state.events.length > maxEvents) {
+          state.events.pop();
+        }
 
         // Generate chips NOW — after ev is in state.events so frequency counts work
         ev.reasoningChips = generateChips(ev);
@@ -1145,7 +1269,13 @@ function connectLiveFeed() {
         };
 
         state.events.unshift(ev);
-        if (state.events.length > 50) state.events.pop();
+        const clusterMax = window.isPro() ? 50 : 10;
+        if (!window.isPro() && state.events.length > clusterMax) {
+          state.events.pop();
+          showFeedCapModal(ev);
+        } else if (state.events.length > clusterMax) {
+          state.events.pop();
+        }
 
         renderFeed();
         updateStats();
