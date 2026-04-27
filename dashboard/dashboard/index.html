@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PolyVision — Command Center</title>
     <meta name="description"
-        content="Real-time Smart Money signals for Polymarket. Track whale positions, copy trades, and follow the alpha." />
+        content="Real-time Smart Money signals for Polymarket. Track whale positions, copy trades, and follow the signal." />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
@@ -62,7 +62,7 @@
     <div class="pwa-banner-icon">📲</div>
     <div class="pwa-banner-text">
       <div class="pwa-banner-title">Add PolyVision to your Home Screen</div>
-      <div class="pwa-banner-sub" id="pwaBannerSub">Get whale alerts even when the app is closed</div>
+      <div class="pwa-banner-sub" id="pwaBannerSub">Get block alerts even when the app is closed</div>
     </div>
     <button class="pwa-install-btn" id="pwaInstallBtn">Install</button>
     <button class="pwa-dismiss-btn" id="pwaDismissBtn" aria-label="Dismiss">✕</button>
@@ -291,7 +291,7 @@
                 <span class="stat-value" id="totalVolume">$0</span>
             </div>
             <div class="market-stat" id="whaleCountStat">
-                <span class="stat-label">WHALES ACTIVE</span>
+                <span class="stat-label">BLOCKS ACTIVE</span>
                 <span class="stat-value" id="whaleCount">0</span>
             </div>
             <div id="clerk-user-button" style="margin-left: 16px;"></div>
@@ -309,7 +309,7 @@
                     <span class="nav-icon">⚡</span> Pulse Feed
                 </a>
                 <a href="#" class="nav-item" id="nav-whales">
-                    <img src="/assets/whale_logo.png" style="height: 18px; margin-right: 12px; vertical-align: middle;" alt=""> Whale Profiles
+                    <img src="/assets/whale_logo.png" style="height: 18px; margin-right: 12px; vertical-align: middle;" alt=""> Trader Profiles
                 </a>
                 <a href="#" class="nav-item" id="nav-markets">
                     <span class="nav-icon">📊</span> Top Markets
@@ -318,7 +318,10 @@
             <div class="nav-section">
                 <span class="nav-label">Portfolio</span>
                 <a href="#" class="nav-item" id="nav-mock">
-                    <span class="nav-icon">🎯</span> Mock Portfolio
+                    <span class="nav-icon">🎯</span> Paper Portfolio
+                </a>
+                <a href="#" class="nav-item" id="nav-leaderboard">
+                    <span class="nav-icon">🏆</span> Leaderboard
                 </a>
                 <a href="#" class="nav-item" id="nav-briefing"
                     onclick="if(!window.isPro()){event.preventDefault();event.stopImmediatePropagation();window.checkoutPro();return false;}">
@@ -354,7 +357,7 @@
                 </div>
             </div>
             <div class="sidebar-footer">
-                <p class="disclaimer-text">⚠️ Whales can hedge.<br />Trade at your own risk.<br />Not financial advice.
+                <p class="disclaimer-text">⚠️ Block Traders can hedge.<br />Trade at your own risk.<br />Not financial advice.
                 </p>
             </div>
         </nav>
@@ -380,10 +383,10 @@
             </div>
         </main>
 
-        <!-- ── COL 2 (ALT): WHALE PROFILES ─────────────────────────────────────── -->
+        <!-- ── COL 2 (ALT): BLOCK PROFILES ─────────────────────────────────────── -->
         <main class="pulse-col" id="whalesCol" style="display:none;">
             <div class="section-header">
-                <h1 class="section-title">🐋 Whale Profiles</h1>
+                <h1 class="section-title">🐋 Trader Profiles</h1>
                 <span class="section-subtitle">Global top traders ranked by all-time P&amp;L</span>
             </div>
             <div class="whale-profiles-grid" id="whaleProfilesGrid">
@@ -406,7 +409,7 @@
             </div>
         </main>
 
-        <!-- ── COL 3: WHALE LEADERBOARD ─────────────────────────────────────────── -->
+        <!-- ── COL 3: BLOCK LEADERBOARD ─────────────────────────────────────────── -->
         <aside class="leaderboard-col" id="leaderboardCol">
             <div class="section-header">
                 <div class="lb-header-row">
@@ -420,7 +423,7 @@
             </div>
             <!-- LIVE tab: existing whale cards -->
             <div class="whale-cards" id="whaleCards">
-                <!-- Whale cards injected by JS -->
+                <!-- Block Trader cards injected by JS -->
             </div>
             <!-- ALL-TIME tab: global leaderboard -->
             <div class="lb-alltime hidden" id="lbAlltime">
@@ -444,7 +447,7 @@
                     <span class="pf-icon">📂</span>
                     <div>
                         <h2 class="pf-title">My Paper Portfolio</h2>
-                        <p class="pf-subtitle">Mock copy-trade tracker · Real market prices</p>
+                        <p class="pf-subtitle">Paper trade tracker · Real market prices</p>
                     </div>
                 </div>
                 <button class="pf-close" id="pfClose">✕</button>
@@ -479,7 +482,7 @@
                 <div class="pf-section-label">📈 MY EQUITY CURVE</div>
                 <div class="pf-chart-wrap">
                     <canvas id="pfChart"></canvas>
-                    <div class="pf-chart-empty" id="pfChartEmpty">Follow some whale trades to see your equity curve
+                    <div class="pf-chart-empty" id="pfChartEmpty">Follow some block trades to see your equity curve
                         grow.</div>
                 </div>
             </div>
@@ -506,13 +509,35 @@
                     <div class="pf-empty hidden" id="pfEmpty">
                         <span class="pf-empty-icon">🎯</span>
                         <p>No paper positions yet.</p>
-                        <p class="pf-empty-sub">Click "+ Mock Follow" on any whale trade card to start tracking.</p>
+                        <p class="pf-empty-sub">Click "+ Paper Trade" on any whale trade card to start tracking.</p>
                     </div>
                 </div>
+        <!-- ── LEADERBOARD VIEW ── -->
+        <div id="leaderboard-view" style="display:none; padding: 24px; padding-bottom: 120px;">
+            <div class="glass-panel" style="padding: 24px;">
+                <h2 style="margin: 0 0 8px 0; font-size: 20px;">Global Leaderboard</h2>
+                <p class="pf-subtitle">Top 50 traders by all-time Paper P&L</p>
+                <div class="pf-table-wrapper" style="margin-top: 24px;">
+                    <table class="pf-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">Rank</th>
+                                <th>Trader</th>
+                                <th>Trades</th>
+                                <th style="text-align: right;">Total P&L</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-body">
+                            <!-- Rendered dynamically -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
-
         </div>
+
     </div>
+</div>
+
 
     <!-- ── COPY-TRADE HUD (fixed bottom) ────────────────────────────────────────── -->
     <div class="hud" id="copyHud">
@@ -541,7 +566,7 @@
                 <div class="pf-title-block">
                     <span class="pf-icon">📰</span>
                     <div>
-                        <h2 class="pf-title">Morning Alpha Briefing</h2>
+                        <h2 class="pf-title">Morning Signal Briefing</h2>
                         <p class="pf-subtitle" id="briefingDate">Generated by PolyVision AI · Daily at 8 AM EST</p>
                     </div>
                 </div>
@@ -581,7 +606,7 @@
         </div>
     </div>
 
-    <!-- ── WHALE PROFILE MODAL ───────────────────────────────────────────────────── -->
+    <!-- ── BLOCK PROFILE MODAL ───────────────────────────────────────────────────── -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal" id="whaleModal">
             <button class="modal-close" id="modalClose">✕</button>
@@ -686,11 +711,11 @@
                 <h2 style="font-size:22px;font-weight:800;color:var(--text-primary);margin:0 0 8px">Unlock PolyVision PRO</h2>
                 <p style="color:var(--text-muted);font-size:14px;margin:0 0 24px">Get ahead of the market with full Smart Money intel.</p>
                 <div class="pro-features-grid">
-                    <div class="pro-feature-item">✅ Full Whale Leaderboard (50+ tracked)</div>
-                    <div class="pro-feature-item">✅ Unlimited Mock Portfolio trades</div>
+                    <div class="pro-feature-item">✅ Full Block Trader Leaderboard (50+ tracked)</div>
+                    <div class="pro-feature-item">✅ Unlimited Paper Portfolio trades</div>
                     <div class="pro-feature-item">✅ Custom Alert Rules + Push Notifications</div>
-                    <div class="pro-feature-item">✅ Morning AI Alpha Briefing (daily)</div>
-                    <div class="pro-feature-item">✅ Whale X-Ray deep profiles</div>
+                    <div class="pro-feature-item">✅ Morning AI Signal Briefing (daily)</div>
+                    <div class="pro-feature-item">✅ Block Trader X-Ray deep profiles</div>
                     <div class="pro-feature-item">✅ All future PRO features</div>
                 </div>
                 <div style="margin:24px 0 8px">

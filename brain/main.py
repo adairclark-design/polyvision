@@ -42,7 +42,8 @@ from dotenv import load_dotenv
 import sys
 sys.path.insert(0, '/app/tools')
 from signal_engine   import build_alert
-from whale_profiler  import profile_trade, init_db, generate_handle
+from whale_profiler  import profile_trade, init_db as init_whale_db, generate_handle
+import paper_trading
 from ai_summarizer   import summarize
 from notifier        import deliver
 from paper_trader    import follow as paper_follow, unfollow as paper_unfollow, get_portfolio as paper_portfolio
@@ -135,6 +136,7 @@ async def lifespan(app: FastAPI):
             init_subscriptions_db()
             init_price_tracker_db()
             init_whale_followers_db()
+            paper_trading.init_db()
             log.info('PostgreSQL tables initialized.')
         except Exception as e:
             log.warning(f'DB init skipped (no connection?): {e}')
@@ -627,37 +629,6 @@ class PaperFollowRequest(BaseModel):
     conviction:    int = 5
 
 
-@app.post('/paper/follow', status_code=201)
-async def paper_follow_trade(req: PaperFollowRequest):
-    """Record a paper trade entry when a user mock-follows a whale alert."""
-    record = await asyncio.get_event_loop().run_in_executor(
-        None, paper_follow, req.model_dump()
-    )
-    return {'status': 'followed', 'trade': record}
-
-
-@app.delete('/paper/follow/{trade_id}', status_code=200)
-async def paper_unfollow_trade(trade_id: str):
-    """Remove a paper trade from the portfolio."""
-    deleted = await asyncio.get_event_loop().run_in_executor(
-        None, paper_unfollow, trade_id
-    )
-    if not deleted:
-        raise HTTPException(404, 'Trade not found in paper portfolio.')
-    return {'status': 'unfollowed', 'trade_id': trade_id}
-
-
-@app.get('/paper/portfolio')
-async def paper_get_portfolio():
-    """
-    Returns the full paper portfolio with real-time P&L.
-    Fetches current prices from Polymarket CLOB — may take a few seconds
-    if many positions are open. Results are cached in Redis between calls.
-    """
-    result = await asyncio.get_event_loop().run_in_executor(
-        None, paper_portfolio
-    )
-    return result
 
 
 @app.get('/leaderboard')

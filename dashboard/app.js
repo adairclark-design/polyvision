@@ -1,8 +1,8 @@
 /* ── PolyVision Command Center — Application Logic ─────────────────────────── */
 'use strict';
 
-// ── Data: Whale Personas ─────────────────────────────────────────────────────
-const WHALES = [
+// ── Data: Block Trader Personas ─────────────────────────────────────────────────────
+const BLOCKS = [
   {
     id: 'oracle',
     handle: 'The Oracle of Oregon',
@@ -95,7 +95,7 @@ function generateGradientAvatar(seed, handle) {
 // ── Avatar: 20 bespoke editorial-illustration portraits, assigned by wallet hash ──
 // Each whale deterministically maps to one of 20 premium illustrated portraits.
 // Same wallet address always resolves to the same avatar.
-const WHALE_AVATARS = [
+const BLOCK_AVATARS = [
   'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_1.png',  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_2.png',
   'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_3.png',  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_4.png',
   'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_5.png',  'https://cdn.jsdelivr.net/gh/adairclark-design/polyvision@main/dashboard/assets/whale_avatar_6.png',
@@ -117,7 +117,7 @@ function _walletHash(seed) {
 
 function getAvatarForHandle(handle, walletAddress) {
   const seed = walletAddress || handle || 'whale';
-  return WHALE_AVATARS[_walletHash(seed) % WHALE_AVATARS.length];
+  return BLOCK_AVATARS[_walletHash(seed) % BLOCK_AVATARS.length];
 }
 
 // Unique HSL accent color per trader — used as identity ring on avatar.
@@ -283,7 +283,7 @@ async function activateProDirectly(sessionId) {
 
 // ── Shared upgrade welcome toast ──────────────────────────────────────────────
 function showUpgradeWelcome() {
-  showToast({ tier: 'WHALE', whale: { handle: '🎉 Welcome to PolyVision PRO!' },
+  showToast({ tier: 'BLOCK', whale: { handle: '🎉 Welcome to PolyVision PRO!' },
     market: 'All PRO features are now unlocked. Your feed just expanded to 50 events.',
     outcome: 'YES', usdValue: 0, timestamp: Date.now() });
   if (!state.discordLinked) {
@@ -341,7 +341,7 @@ async function pollForProStatus(attempts = 0) {
         const upgradeBtn = $('btnHudUpgrade');
         if (upgradeBtn) upgradeBtn.style.display = 'none';
         renderDiscordLinkButton();
-        showToast({ tier: 'WHALE', whale: { handle: '🎉 Welcome to PolyVision PRO!' },
+        showToast({ tier: 'BLOCK', whale: { handle: '🎉 Welcome to PolyVision PRO!' },
           market: 'All PRO features are now unlocked. Your feed just expanded to 50 events.',
           outcome: 'YES', usdValue: 0, timestamp: Date.now() });
         if (!state.discordLinked) {
@@ -402,7 +402,7 @@ window.addEventListener('message', (event) => {
   if (event.data?.type === 'discord_linked') {
     state.discordLinked = true;
     renderDiscordLinkButton();
-    showToast({ tier: 'WHALE', whale: { handle: '💙 Discord Linked!' },
+    showToast({ tier: 'BLOCK', whale: { handle: '💙 Discord Linked!' },
       market: 'PRO channel access is now active. Check your Discord server.',
       outcome: 'YES', usdValue: 0, timestamp: Date.now() });
   }
@@ -534,7 +534,7 @@ function showFeedCapModal(blockedEvent) {
   if (state._feedCapShown) return;
   state._feedCapShown = true;
 
-  const tierLabel = blockedEvent?.tier || 'WHALE';
+  const tierLabel = blockedEvent?.tier || 'BLOCK';
   const market    = (blockedEvent?.market || 'an active market').slice(0, 60);
   const usd       = blockedEvent?.usdValue
     ? '$' + blockedEvent.usdValue.toLocaleString('en-US', { maximumFractionDigits: 0 })
@@ -567,7 +567,7 @@ function showFeedCapModal(blockedEvent) {
         <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:6px">
           <li style="color:#e6edf3;font-size:13px">✓ 50 live events (5× more)</li>
           <li style="color:#e6edf3;font-size:13px">✓ Email &amp; push alerts — even when your browser is closed</li>
-          <li style="color:#e6edf3;font-size:13px">✓ Whale consensus widget + full leaderboard</li>
+          <li style="color:#e6edf3;font-size:13px">✓ Block Trader consensus widget + full leaderboard</li>
           <li style="color:#e6edf3;font-size:13px">✓ Discord PRO channel access</li>
         </ul>
       </div>
@@ -869,7 +869,7 @@ function buildEventCard(ev) {
       <div class="cluster-meta">
         <span class="cluster-icon">⚡</span>
         <div>
-          <div class="cluster-headline">${ev.clusterCount || participants.length} Whales · Same Side · 15-Min Window</div>
+          <div class="cluster-headline">${ev.clusterCount || participants.length} Block Traders · Same Side · 15-Min Window</div>
           <div class="cluster-sub">${outcome} on "${ev.market}" · Total size: ${fmt(ev.usdValue)}</div>
         </div>
       </div>
@@ -882,14 +882,14 @@ function buildEventCard(ev) {
         <button class="btn-card btn-mock-follow ${following ? 'following' : ''}"
                 id="follow-${ev.id}"
                 onclick="toggleFollow('${ev.id}', event)">
-          ${following ? '✅ Following' : '+ Mock Follow This Trade'}
+          ${following ? '✅ Following' : '+ Paper Trade This Trade'}
         </button>
         <button class="btn-card btn-dismiss" onclick="dismissCard('${ev.id}', event)">✕</button>
       </div>
     </div>`;
   }
 
-  // ── Standard / Whale card ────────────────────────────────────────────────────
+  // ── Standard / Block Trader card ────────────────────────────────────────────────────
   const isYes = ev.outcome === 'YES';
   const tierClass = ev.tier.toLowerCase();
   const sideClass = isYes ? 'yes' : 'no';
@@ -916,7 +916,7 @@ function buildEventCard(ev) {
         <div class="card-time">${timeAgo(ev.timestamp)}</div>
       </div>
       <div class="card-badges">
-        <span class="tier-badge ${ev.tier}">${ev.tier === 'WHALE' ? '<img src="/assets/whale_logo.png" style="height: 1em; vertical-align: middle; display: inline-block;" alt="">' : '🔵'} ${ev.tier}</span>
+        <span class="tier-badge ${ev.tier}">${ev.tier === 'BLOCK' ? '<img src="/assets/whale_logo.png" style="height: 1em; vertical-align: middle; display: inline-block;" alt="">' : '🔵'} ${ev.tier}</span>
         <span class="source-badge ${(ev.source||'POLYMARKET').toLowerCase()}">${ev.source === 'KALSHI' ? 'KALSHI' : 'POLY'}</span>
       </div>
     </div>
@@ -950,7 +950,7 @@ function buildEventCard(ev) {
       <button class="btn-card btn-mock-follow ${following ? 'following' : ''}"
               id="follow-${ev.id}"
               onclick="toggleFollow('${ev.id}', event)">
-        ${following ? '✅ Following' : '+ Mock Follow'}
+        ${following ? '✅ Following' : '+ Paper Trade'}
       </button>
       <button class="btn-card btn-profile" onclick="openWhaleModal('${ev.whale.id}', event)">
         View Profile
@@ -960,7 +960,7 @@ function buildEventCard(ev) {
   </div>`;
 }
 
-// ── Build Whale Card HTML ─────────────────────────────────────────────────────
+// ── Build Block Trader Card HTML ─────────────────────────────────────────────────────
 function buildWhaleCard(whale, rank) {
   const isTop = rank <= 3;
   const color = rank === 1 ? '#00FFA3' : rank === 2 ? '#4D8EFF' : '#FFB800';
@@ -1029,7 +1029,7 @@ function renderLeaderboard() {
     whaleCardsEl.innerHTML = `
       <div class="empty-state" style="padding:32px 16px">
         <span class="empty-icon"><img src="/assets/whale_logo.png" style="height: 1.2em; vertical-align: middle;" alt=""></span>
-        <span>Whales appear here as they trade live. Stay tuned.</span>
+        <span>Block Traders appear here as they trade live. Stay tuned.</span>
       </div>`;
     return;
   }
@@ -1146,7 +1146,7 @@ function connectLiveFeed() {
             historical:          true,   // flag: don't animate or alert
             whale: {
               id: p.wallet_address || `whale-${i}`,
-              handle:    p.trader_handle || 'Unknown Whale',
+              handle:    p.trader_handle || 'Unknown Block Trader',
               wallet:    p.wallet_address || '',
               avatar:    getAvatarForHandle(p.trader_handle || p.trader_pseudonym || '', p.wallet_address || ''),
               badge:     p.wallet_win_rate >= 0.6 ? 'Shark' : (p.wallet_win_rate !== undefined ? 'Pro' : 'Newcomer'),
@@ -1174,7 +1174,7 @@ function connectLiveFeed() {
         return;  // don't fall through to live-event handling
       }
 
-      // Handle standard / whale alerts
+      // Handle standard / block alerts
 
       if (payload.alert_tier || payload.alert_id) {
         // Map backend WhaleAlertPayload schema to frontend UI schema
@@ -1193,7 +1193,7 @@ function connectLiveFeed() {
           // Assign random aesthetic elements to real wallets
           whale: {
             id: payload.wallet_address || `whale-${Date.now()}`,
-            handle: payload.trader_handle || 'Unknown Whale',
+            handle: payload.trader_handle || 'Unknown Block Trader',
             wallet: payload.wallet_address || '',
             avatar: getAvatarForHandle(payload.trader_handle || payload.trader_pseudonym || '', payload.wallet_address || ''),
             badge: payload.wallet_win_rate >= 0.6 ? 'Shark' : (payload.wallet_win_rate !== undefined ? 'Pro' : 'Newcomer'),
@@ -1245,7 +1245,7 @@ function connectLiveFeed() {
             firstCard.classList.add('event-card-new');
             firstCard.addEventListener('animationend', () => firstCard.classList.remove('event-card-new'), { once: true });
           }
-          if (ev.tier === 'WHALE') showToast(ev);
+          if (ev.tier === 'BLOCK') showToast(ev);
         }
       } else if (payload.mega_cluster) {
         // Handle mega-cluster alerts
@@ -1264,7 +1264,7 @@ function connectLiveFeed() {
             price: p.price
           })),
           timestamp: Date.now(),
-          whale: pickRandom(WHALES), // fallback
+          whale: pickRandom(BLOCKS), // fallback
           reasoningChips: [],
         };
 
@@ -1414,7 +1414,7 @@ window.toggleFollow = async function (eventId, e) {
     const paperTradeId = paperTradeIds[eventId];
     if (paperTradeId) {
       try {
-        await fetch(`${BRAIN_URL}/paper/follow/${paperTradeId}`, { method: 'DELETE' });
+        await fetch(`${BRAIN_URL}/portfolio/trade/${paperTradeId}`, { method: 'DELETE' });
         delete paperTradeIds[eventId];
       } catch { /* Brain offline — local state still updated */ }
     }
@@ -1423,18 +1423,17 @@ window.toggleFollow = async function (eventId, e) {
     state.following.add(eventId);
     state.portfolio.trackCount++;
     try {
-      const resp = await fetch(`${BRAIN_URL}/paper/follow`, {
+      const user = window.Clerk?.user;
+      const resp = await fetch(`${BRAIN_URL}/portfolio/trade`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          alert_id: ev.id,
-          market_id: ev.marketId || ev.id,
+          clerk_user_id: user?.id || 'anonymous',
+          display_name: user?.fullName || user?.primaryEmailAddress?.emailAddress || 'Anonymous Trader',
           market_title: ev.market,
           outcome: ev.outcome,
-          price: ev.price,
-          usd_value: ev.usdValue,
-          trader_handle: ev.whale.handle,
-          conviction,
+          entry_price: ev.price,
+          size_usd: 100.0 // Default simulated paper size
         }),
       });
       if (resp.ok) {
@@ -1450,14 +1449,14 @@ window.toggleFollow = async function (eventId, e) {
   const btn = document.getElementById(`follow-${eventId}`);
   if (btn) {
     const nowFollowing = state.following.has(eventId);
-    btn.textContent = nowFollowing ? '✅ Following' : '+ Mock Follow';
+    btn.textContent = nowFollowing ? '✅ Following' : '+ Paper Trade';
     btn.classList.toggle('following', nowFollowing);
   }
   // Update modal button text if open
   const modalBtn = document.getElementById(`modal-follow-${eventId}`);
   if (modalBtn) {
     const nowFollowing = state.following.has(eventId);
-    modalBtn.textContent = nowFollowing ? '✅ Following' : '+ Mock Follow This Trade';
+    modalBtn.textContent = nowFollowing ? '✅ Following' : '+ Paper Trade This Trade';
     modalBtn.classList.toggle('following', nowFollowing);
   }
 };
@@ -1466,7 +1465,9 @@ window.toggleFollow = async function (eventId, e) {
 function startPaperPortfolioPolling() {
   async function fetchRealPortfolio() {
     try {
-      const resp = await fetch(`${BRAIN_URL}/paper/portfolio`, { signal: AbortSignal.timeout(10000) });
+      const user = window.Clerk?.user;
+      const clerk_id = user?.id || 'anonymous';
+      const resp = await fetch(`${BRAIN_URL}/portfolio/portfolio?clerk_user_id=${clerk_id}`, { signal: AbortSignal.timeout(10000) });
       if (!resp.ok) return;
       const portfolio = await resp.json();
 
@@ -1508,7 +1509,7 @@ window.dismissCard = function (eventId, e) {
   renderFeed();
 };
 
-// ── Whale Follow (push notification subscriptions) ──────────────────────────
+// ── Block Trader Follow (push notification subscriptions) ──────────────────────────
 function getFollowedWhales() {
   try { return new Set(JSON.parse(localStorage.getItem('followedWhales') || '[]')); }
   catch { return new Set(); }
@@ -1527,7 +1528,7 @@ window.toggleFollowWhale = async function(wallet) {
 
   // 2. Update button UI immediately — do NOT wait for async work
   document.querySelectorAll(`.whale-follow-btn[data-wallet="${wallet}"]`).forEach(btn => {
-    btn.textContent = isNowFollowed ? '🔔 Following' : '🔔 Follow Whale';
+    btn.textContent = isNowFollowed ? '🔔 Following' : '🔔 Follow Block Trader';
     btn.classList.toggle('following', isNowFollowed);
   });
 
@@ -1579,7 +1580,7 @@ window.openWhaleModal = function (whaleId, e) {
   if (e) e.stopPropagation();
 
   // 1. Try static whale roster (demo profiles)
-  let whale = WHALES.find(w => w.id === whaleId);
+  let whale = BLOCKS.find(w => w.id === whaleId);
 
   // 2. Fallback: build a whale object from live state.events
   if (!whale) {
@@ -1594,7 +1595,7 @@ window.openWhaleModal = function (whaleId, e) {
       const totalVolume  = walletEvents.reduce((s, x) => s + (x.usdValue || 0), 0);
       whale = {
         id:              w.id || whaleId,
-        handle:          w.handle || 'Unknown Whale',
+        handle:          w.handle || 'Unknown Block Trader',
         avatar:          w.avatar || '',
         wallet:          w.wallet || whaleId,
         winRate:         w.winRate,
@@ -1640,7 +1641,7 @@ window.openWhaleModal = function (whaleId, e) {
     <button class="whale-follow-btn ${isFollowed ? 'following' : ''}"
             data-wallet="${whale.wallet}"
             onclick="toggleFollowWhale('${whale.wallet}')">
-      ${isFollowed ? '🔔 Following' : '🔔 Follow Whale'}
+      ${isFollowed ? '🔔 Following' : '🔔 Follow Block Trader'}
     </button>` : ''}
     <div class="modal-stats-grid">
       <div class="modal-stat">
@@ -1675,7 +1676,7 @@ window.openWhaleModal = function (whaleId, e) {
     <div class="modal-recent-title">Recent Positions</div>
     ${recentHtml}
     <div style="margin-top:16px;font-size:10px;color:var(--text-muted);line-height:1.6">
-      ⚠️ Whales can hedge. Following a trade is at your own risk. This is not financial advice.
+      ⚠️ Block Traders can hedge. Following a trade is at your own risk. This is not financial advice.
     </div>
   `;
   modalOverlay.classList.add('open');
@@ -1723,7 +1724,7 @@ window.openTradeModal = function (eventId) {
           <div class="modal-handle">${whale.handle}</div>
           <div class="modal-wallet">${whale.wallet} · ${whale.dominantCategory}</div>
         </div>
-        <span class="tier-badge ${ev.tier}" style="margin-left:auto">${ev.tier === 'WHALE' ? '<img src="/assets/whale_logo.png" style="height: 1em; vertical-align: middle; display: inline-block;" alt="">' : '🔵'} ${ev.tier}</span>
+        <span class="tier-badge ${ev.tier}" style="margin-left:auto">${ev.tier === 'BLOCK' ? '<img src="/assets/whale_logo.png" style="height: 1em; vertical-align: middle; display: inline-block;" alt="">' : '🔵'} ${ev.tier}</span>
       </div>
 
       <!-- ── This Trade ── -->
@@ -1783,8 +1784,8 @@ window.openTradeModal = function (eventId) {
     }
       </div>
 
-      <!-- ── Whale Profile ── -->
-      <div class="modal-section-label">WHALE PROFILE</div>
+      <!-- ── Block Trader Profile ── -->
+      <div class="modal-section-label">BLOCK PROFILE</div>
       <div class="modal-stats-grid">
         <div class="modal-stat">
           <div class="modal-stat-label">Win Rate</div>
@@ -1829,7 +1830,7 @@ window.openTradeModal = function (eventId) {
         <button class="btn-mock-follow btn-card ${following ? 'following' : ''}"
                 id="modal-follow-${eventId}"
                 onclick="toggleFollow('${eventId}', event)">
-          ${following ? '✅ Following' : '+ Mock Follow This Trade'}
+          ${following ? '✅ Following' : '+ Paper Trade This Trade'}
         </button>
         <button class="btn-profile btn-card" onclick="openWhaleModal('${whale.id}', event)">
           Full Profile →
@@ -1840,14 +1841,14 @@ window.openTradeModal = function (eventId) {
       </div>
 
       <div style="margin-top:14px;font-size:10px;color:var(--text-muted);line-height:1.6">
-        ⚠️ Whales can hedge. This is not financial advice. Trade at your own risk.
+        ⚠️ Block Traders can hedge. This is not financial advice. Trade at your own risk.
       </div>
     `;
 
   modalOverlay.classList.add('open');
 };
 
-// ── Shareable Whale Profile URL ───────────────────────────────────────────────
+// ── Shareable Block Trader Profile URL ───────────────────────────────────────────────
 window.shareWhaleProfile = function (walletAddress, e) {
   if (e) e.stopPropagation();
   if (!walletAddress) return;
@@ -1942,6 +1943,7 @@ const VIEWS = {
   'nav-whales':   { col: 'whalesCol',  lb: false },
   'nav-markets':  { col: 'marketsCol', lb: false },
   'nav-mock':     { col: null,         lb: true,  action: () => openPortfolio() },
+  'nav-leaderboard':{ col: 'leaderboard-view', lb: false },
   'nav-briefing': { col: null,         lb: true,  action: () => openBriefing()  },
   'nav-alerts':   { col: null,         lb: true,  action: () => openAlerts()   },
 };
@@ -1959,7 +1961,7 @@ function switchView(navId) {
   if (navEl) navEl.classList.add('active');
 
   // Toggle columns
-  const cols = ['pulseCol', 'whalesCol', 'marketsCol'];
+  const cols = ['pulseCol', 'whalesCol', 'marketsCol', 'leaderboard-view'];
   cols.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = (view.col === id) ? '' : 'none';
@@ -1972,6 +1974,7 @@ function switchView(navId) {
   // Trigger data loads
   if (navId === 'nav-whales') loadWhaleProfiles();
   if (navId === 'nav-markets') loadTopMarkets();
+  if (navId === 'nav-leaderboard') loadLeaderboard();
 }
 
 document.querySelectorAll('.nav-item:not(.locked)').forEach(item => {
@@ -1981,7 +1984,7 @@ document.querySelectorAll('.nav-item:not(.locked)').forEach(item => {
   };
 });
 
-// ── Whale Profiles Loader ───────────────────────────────────────────────────
+// ── Trader Profiles Loader ───────────────────────────────────────────────────
 let whaleProfilesLoaded = false;
 
 async function loadWhaleProfiles() {
@@ -2131,7 +2134,7 @@ function renderMarkets() {
     const starBtn   = `<button class="mc-star-btn ${isWatched ? 'watched' : ''}" onclick="toggleMarketWatch('${title.replace(/'/g, "&#39;")}')"
       title="${isWatched ? 'Remove from watchlist' : 'Add to watchlist'}">${isWatched ? '⭐' : '☆'}</button>`;
 
-    // Whale Consensus Badge
+    // Smart Money Consensus Badge
     const consensus = getWhaleConsensus(title);
     const consensusBadge = consensus
       ? `<div class="mc-consensus">
@@ -2233,10 +2236,12 @@ async function loadTopMarkets() {
   grid.innerHTML = `<div class="lb-loading">⚠️ Could not load markets. Check your internet connection.</div>`;
 }
 
-// ── CSV Export for Mock Portfolio ──────────────────────────────────────────────────
+// ── CSV Export for Paper Portfolio ──────────────────────────────────────────────────
 window.exportPortfolioCSV = async function() {
   try {
-    const resp = await fetch(`${BRAIN_URL}/paper/portfolio`, { signal: AbortSignal.timeout(12000) });
+    const user = window.Clerk?.user;
+    const clerk_id = user?.id || 'anonymous';
+    const resp = await fetch(`${BRAIN_URL}/portfolio/portfolio?clerk_user_id=${clerk_id}`, { signal: AbortSignal.timeout(12000) });
     const data = await resp.json();
     const trades = data.trades || [];
 
@@ -2369,7 +2374,7 @@ function initApp() {
         openTradeModal(ev.id);
       } else {
         // Wallet not in feed yet — show toast explaining
-        showToast({ tier: 'INFO', whale: { handle: '🔍 Whale not in feed' }, market: `No recent trades from ${targetWallet.slice(0, 10)}… — they may have traded outside the current feed window.`, outcome: 'INFO', usdValue: 0, timestamp: Date.now() });
+        showToast({ tier: 'INFO', whale: { handle: '🔍 Block Trader not in feed' }, market: `No recent trades from ${targetWallet.slice(0, 10)}… — they may have traded outside the current feed window.`, outcome: 'INFO', usdValue: 0, timestamp: Date.now() });
       }
     }, 3000); // give WS burst time to arrive
     // Clean the URL without reload
@@ -2404,7 +2409,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-// ── Alpha Leaderboard ─────────────────────────────────────────────────────────
+// ── Signal Leaderboard ─────────────────────────────────────────────────────────
 let lbActiveTab = 'live';
 let lbLoaded = false;
 
@@ -2780,7 +2785,49 @@ function closePortfolio() {
   $('portfolioOverlay').classList.remove('active');
 }
 
-// ── Morning Alpha Briefing Panel ──────────────────────────────────────────────
+// ── Leaderboard View ────────────────────────────────────────────────────────
+async function loadLeaderboard() {
+  const body = document.getElementById('leaderboard-body');
+  if (!body) return;
+  body.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 40px; color:var(--muted)">Loading Top Traders...</td></tr>';
+
+  try {
+    const res = await fetch(`${BRAIN_URL}/portfolio/leaderboard`);
+    if (!res.ok) throw new Error();
+    const traders = await res.json();
+    
+    if (traders.length === 0) {
+      body.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 40px; color:var(--muted)">No paper traders yet. Be the first!</td></tr>';
+      return;
+    }
+
+    body.innerHTML = '';
+    traders.forEach((t, i) => {
+      const pnlColor = t.total_pnl > 0 ? 'var(--mint)' : (t.total_pnl < 0 ? 'var(--rose)' : 'inherit');
+      const pnlSign = t.total_pnl > 0 ? '+' : '';
+      
+      let rankDisplay = `#${i+1}`;
+      if (i === 0) rankDisplay = '🥇';
+      if (i === 1) rankDisplay = '🥈';
+      if (i === 2) rankDisplay = '🥉';
+
+      body.innerHTML += `
+        <tr>
+          <td style="font-weight: bold; color: var(--muted);">${rankDisplay}</td>
+          <td style="font-weight: 600;">${t.display_name}</td>
+          <td style="color: var(--muted);">${t.trades_taken}</td>
+          <td style="text-align: right; font-family: monospace; font-size: 16px; color: ${pnlColor}; font-weight: 700;">
+            ${pnlSign}$${Math.abs(t.total_pnl).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+          </td>
+        </tr>
+      `;
+    });
+  } catch (err) {
+    body.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 40px; color:var(--rose)">Failed to load leaderboard.</td></tr>';
+  }
+}
+
+// ── Morning Signal Briefing Panel ──────────────────────────────────────────────
 window.openBriefing = async function () {
   // PRO gate: free users see the upgrade modal
   if (!window.isPro()) {
@@ -2897,7 +2944,9 @@ async function renderPortfolio() {
 
   let portfolio;
   try {
-    const resp = await fetch(`${BRAIN_URL}/paper/portfolio`, { signal: AbortSignal.timeout(12000) });
+    const user = window.Clerk?.user;
+    const clerk_id = user?.id || 'anonymous';
+    const resp = await fetch(`${BRAIN_URL}/portfolio/portfolio?clerk_user_id=${clerk_id}`, { signal: AbortSignal.timeout(12000) });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     portfolio = await resp.json();
   } catch {
@@ -3027,7 +3076,7 @@ async function renderPortfolio() {
 
 window.closePosition = async function (tradeId) {
   try {
-    const resp = await fetch(`${BRAIN_URL}/paper/follow/${tradeId}`, { method: 'DELETE' });
+    const resp = await fetch(`${BRAIN_URL}/portfolio/trade/${tradeId}`, { method: 'DELETE' });
     if (!resp.ok) throw new Error();
     // Animate row out
     const row = document.getElementById(`pf-row-${tradeId}`);
@@ -3043,7 +3092,7 @@ window.closePosition = async function (tradeId) {
         state.following.delete(eventId);
         delete paperTradeIds[eventId];
         const btn = document.getElementById(`follow-${eventId}`);
-        if (btn) { btn.textContent = '+ Mock Follow'; btn.classList.remove('following'); }
+        if (btn) { btn.textContent = '+ Paper Trade'; btn.classList.remove('following'); }
       }
     });
   } catch {
@@ -3188,7 +3237,7 @@ async function runWalletSearch(query) {
     content.innerHTML = `
       <div style="text-align:center;padding:32px 0;color:var(--text-muted)">
         <div style="font-size:32px">🤷</div>
-        <div style="margin-top:8px;font-weight:700;color:var(--text-primary)">Whale not found</div>
+        <div style="margin-top:8px;font-weight:700;color:var(--text-primary)">Block Trader not found</div>
         <div style="margin-top:4px;font-size:13px">Try a full wallet address (0x…) or exact Polymarket username.</div>
       </div>`;
   }
@@ -3424,14 +3473,14 @@ function checkEventAgainstRules(ev) {
       // In-app alert toast (always fires)
       showToast({
         ...ev,
-        tier: 'WHALE',
+        tier: 'BLOCK',
         market: `🔔 Alert: ${ev.market}`,
       });
 
       // Browser push notification (fires if permission granted)
       if (Notification.permission === 'granted') {
         new Notification(`📡 PolyVision Alert`, {
-          body: `${ev.whale?.handle || 'Whale'} — $${Math.round(ev.usdValue).toLocaleString()} ${ev.outcome} on "${ev.market}"`,
+          body: `${ev.whale?.handle || 'Block Trader'} — $${Math.round(ev.usdValue).toLocaleString()} ${ev.outcome} on "${ev.market}"`,
           icon: '/favicon.ico',
         });
       }
@@ -3487,11 +3536,11 @@ function initPushNotifications() {
       const isSubscribed = await OneSignal.User.PushSubscription.optedIn;
       if (isSubscribed) {
         await OneSignal.User.PushSubscription.optOut();
-        showToast({ tier: 'INFO', whale: { handle: 'Notifications' }, market: 'Whale alerts unsubscribed.', outcome: 'OK', usdValue: 0, timestamp: Date.now() });
+        showToast({ tier: 'INFO', whale: { handle: 'Notifications' }, market: 'Block Trader alerts unsubscribed.', outcome: 'OK', usdValue: 0, timestamp: Date.now() });
       } else {
         await OneSignal.login(crypto.randomUUID());   // anonymous user ID
         await OneSignal.User.PushSubscription.optIn();
-        showToast({ tier: 'INFO', whale: { handle: '🔔 Subscribed!' }, market: 'You\'ll receive whale alerts instantly.', outcome: 'OK', usdValue: 0, timestamp: Date.now() });
+        showToast({ tier: 'INFO', whale: { handle: '🔔 Subscribed!' }, market: 'You\'ll receive block alerts instantly.', outcome: 'OK', usdValue: 0, timestamp: Date.now() });
       }
       await syncButtonState();
     });
