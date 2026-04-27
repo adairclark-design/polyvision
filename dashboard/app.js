@@ -449,7 +449,7 @@ window.checkoutPro = async function () {
 // This replaces the old bare Payment Link redirect which had no success_url.
 window.startStripeCheckout = async function () {
   const user = window.Clerk?.user;
-  if (!user) { alert('Please sign in first.'); return; }
+  if (!user) { window.Clerk?.openSignIn(); return; }
   const btn = $('btnGoStripe');
   if (btn) { btn.disabled = true; btn.textContent = '⏳ Redirecting to Stripe…'; }
   try {

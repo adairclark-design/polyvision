@@ -260,11 +260,9 @@
     <a href="#features">Features</a>
     <a href="#pricing">Pricing</a>
     <button class="nav-link-btn" onclick="window.location.assign('/dashboard/')">Dashboard →</button>
-    <button class="nav-cta" onclick="window.location.assign('/dashboard/')">Sign In</button>
-
-
-
-  </div>
+    <div id="user-button">
+      <button class="nav-cta" onclick="if(window.Clerk) window.Clerk.openSignIn(); else window.location.assign('/dashboard/');">Sign In</button>
+    </div>  </div>
 </nav>
 
 <!-- HERO -->
@@ -490,6 +488,22 @@ async function submitEmailCap(e) {
       document.getElementById('statMarkets').textContent = d.markets_tracked + '+';
   } catch(_) {}  // silent — hardcoded values remain
 })();
+// Clerk Auth Initialization
+const CLERK_PUB_KEY = 'pk_test_placeholder_key';
+
+const clerkScript = document.createElement('script');
+clerkScript.setAttribute('data-clerk-publishable-key', CLERK_PUB_KEY);
+clerkScript.async = true;
+clerkScript.src = 'https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js';
+clerkScript.crossOrigin = 'anonymous';
+clerkScript.addEventListener('load', async function() {
+  await window.Clerk.load();
+  const ub = document.getElementById('user-button');
+  if (window.Clerk.user) {
+    window.Clerk.mountUserButton(ub);
+  }
+});
+document.body.appendChild(clerkScript);
 </script>
 </body>
 </html>

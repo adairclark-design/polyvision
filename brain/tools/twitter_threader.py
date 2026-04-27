@@ -94,7 +94,9 @@ def generate_thread_copy(trades: list) -> list:
             f"- Prediction: {outcome} @ {price_str}\n"
             f"- Position Size: ${usd:,.0f} USD\n\n"
         )
-            "You are an objective, data-focused data analyst for @PolyVisionApp. "
+        
+    prompt = (
+        "You are an objective, data-focused data analyst for @PolyVisionApp. "
         "Your task is to write a clean, professional multi-tweet thread summarizing the top 5 largest "
         "prediction market trades of the past 24 hours.\n\n"
         "Input Data:\n" + trades_text +
