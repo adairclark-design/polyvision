@@ -113,7 +113,7 @@ def generate_thread_copy(trades: list) -> list:
         "    \"[Tweet 2 text...]\"\n"
         "  ]\n"
         "}"
-    
+    )
     try:
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
