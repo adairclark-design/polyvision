@@ -19,6 +19,19 @@ def _load_secrets():
 SECRETS = _load_secrets()
 OPENAI_API_KEY = SECRETS.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
 
+# Rotating hashtag pools — 4 thematic sets to broaden discovery across audiences.
+# One pool is randomly selected per generation; the model is instructed to use it exactly.
+HASHTAG_POOLS = [
+    # Pool A — Core prediction market / smart money (baseline)
+    "#predictionmarkets #smartmoney #polymarket #kalshi #marketanalysis #financialdata #polyvision",
+    # Pool B — Mainstream investing / trading audience
+    "#investing #trading #stockmarket #wallstreet #marketintelligence #financenews #polyvision",
+    # Pool C — Crypto / Web3 adjacent (captures BTC/ETH market audience)
+    "#crypto #bitcoin #altcoins #defi #cryptotrading #predictionmarkets #polyvision",
+    # Pool D — Broad finance / viral discovery (widest reach)
+    "#money #finance #passiveincome #wealthbuilding #marketmoves #smartmoney #polyvision",
+]
+
 SYSTEM_PROMPT = """You are the Lead Marketing Architect for PolyVision, an elite prediction market analytics platform.
 Your objective is to generate the social media copy for a new trade alert video.
 The platform tracks large institutional "Smart Money" positions on Polymarket — a regulated financial prediction market.
@@ -54,9 +67,9 @@ FRAMING RULE: Always position PolyVision as a FINANCIAL ANALYTICS tool tracking 
 signals — not a gambling platform. The lens is: data intelligence, smart money flows, market sentiment.
 
 HASHTAG RULES:
-  ✅ Always include: #predictionmarkets #smartmoney #marketanalysis #financialdata
-  ✅ Acceptable: #polymarket #kalshi #investing #marketintelligence #polyvision
+  ✅ You will be given a HASHTAG POOL for this specific video. Use those tags — do NOT substitute your own.
   ❌ Never use: #sportsbetting #gambling #bet #odds or any gambling-adjacent hashtags
+  ❌ Never use the same hashtag set two generations in a row (rotation is enforced externally).
 
 --- SCRIPT CADENCE (Voiceover Delivery Engineering) ---
 CRITICAL: The `script_text` you write is fed directly into an AI Text-To-Speech engine. The engine reads
@@ -88,7 +101,7 @@ You must return your output exclusively as a flat JSON object with EXACTLY the f
   "script_text": "The exact script for the TTS voiceover (15-20 seconds of speaking). CRITICAL FORMATTING RULES — these control the emotional delivery of the AI voice:\n1. SENTENCE LENGTH: Max 6 words per sentence fragment before a pause. Short sentences = punchy, urgent delivery.\n2. PAUSES: Use '...' after the dollar amount to let it land. Use '—' before a key insight for a dramatic beat.\n3. EMPHASIS: Use ALL CAPS on the single most important word or number in each sentence (e.g. 'ONE HUNDRED TWENTY-SIX THOUSAND dollars').\n4. HOOK: Open with a 2-4 word fragment that sounds like a breaking news alert (e.g. 'Hold on.' or 'Wait. Look at this.' or 'This just dropped.').\n5. TENSION: Build intrigue before the reveal — do NOT lead with the full context immediately.\n6. RHETORICAL QUESTION: Include one short rhetorical question mid-script to break the rhythm (e.g. 'Who moves this kind of money?' or 'You see this?').\n7. DOLLAR AMOUNTS: Write ALL dollar amounts in fully spoken form — e.g. 'one hundred twenty-six thousand dollars' NOT '$126K'. Never use '$' symbols or abbreviations.\n8. CTA: End with a punchy, urgent CTA. Example: 'Track it. Polyvision dot app. Link in bio.'",
   "title": "A short, punchy title for TikTok/Reels featuring emojis.",
   "description": "The description body text for the platform upload.",
-  "hashtags": "#predictionmarkets #smartmoney #polymarket ...",
+  "hashtags": "Use EXACTLY the hashtag pool provided in the user payload. Do not add or remove tags.",
   "trending_sound": "The exact type of TikTok/Reels trending sound you recommend for this specific trade's mood (e.g. 'Dark Cyberpunk Synthwave', 'High Energy Drill Beat', or 'Suspenseful Cinematic Drop')."
 }
 
@@ -139,6 +152,10 @@ def generate_social_copy(
             f"Use urgent, present-tense language. Open with the exact dollar amount as if it's breaking news."
         )
 
+    import random as _random
+    selected_hashtag_pool = _random.choice(HASHTAG_POOLS)
+    log.info(f"[Copywriter] Hashtag pool selected: {selected_hashtag_pool[:60]}...")
+
     payload = {
         "trade_data":       trade_data,
         "market_data":      market_data or {},
@@ -146,6 +163,7 @@ def generate_social_copy(
         "rl_context":       rl_context or "(No RL context — first-run mode)",
         "cta":              "Track every smart money move free at polyvision.app",
         "brain_directive":  brain or "(No brain directive — first-run mode)",
+        "hashtag_pool":     selected_hashtag_pool,
     }
 
     import time

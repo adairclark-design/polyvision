@@ -60,6 +60,11 @@ SINGLE_TRADE_MIN_USD    = 25_000      # Layer 3: min trade size (single trade pa
 RECAP_HOUR              = 17          # Layer 4: fire recap if no videos by this hour (EST)
 RECAP_LOOKBACK_H        = 8           # Layer 4: how far back the recap looks for a trade
 
+# Peak posting windows (EST hours, inclusive). Outside these, fresh trade videos
+# are held. Layer 4 recap still fires at RECAP_HOUR regardless.
+# 6-9 = morning commute | 19-23 = prime evening engagement window
+PEAK_HOURS_EST: set[int] = {6, 7, 8, 9, 19, 20, 21, 22, 23}
+
 
 def _load_secrets() -> dict:
     secrets_path = os.path.join(THIS_DIR, '..', '..', 'secrets.json')
@@ -78,6 +83,11 @@ def _is_market_on_cooldown(market_key: str, cooldown_map: dict) -> bool:
         return False
     elapsed_h = (datetime.now(timezone.utc) - last_fired).total_seconds() / 3600
     return elapsed_h < PER_MARKET_COOLDOWN_H
+
+
+def _is_peak_hour(now_hour_est: int) -> bool:
+    """Returns True if the current EST hour is inside a peak engagement window."""
+    return now_hour_est in PEAK_HOURS_EST
 
 
 def _mark_market_fired(market_key: str, cooldown_map: dict) -> None:
@@ -167,39 +177,42 @@ def main():
             # ══════════════════════════════════════════════════════════════════
             # LAYER 2 — Momentum Cluster Detection
             # ══════════════════════════════════════════════════════════════════
-            clusters = fetch_momentum_clusters(
-                min_cluster_usd = MOMENTUM_MIN_USD,
-                min_trade_count = MOMENTUM_MIN_TRADES,
-                window_minutes  = MOMENTUM_WINDOW_M,
-                max_age_minutes = FRESHNESS_MAX_MINUTES,
-            )
-
-            for cluster in clusters:
-                market_key = cluster.get("market_id") or cluster.get("market_title", "")
-                if _is_market_on_cooldown(market_key, market_cooldown):
-                    log.info(f"[Layer 2] Cluster on cooldown: '{cluster['market_title'][:40]}'")
-                    continue
-
-                log.info(
-                    f"🔥 [Layer 2] MOMENTUM CLUSTER: {cluster['trade_count']} trades, "
-                    f"${cluster['total_usd']:,.0f} on '{cluster['market_title'][:50]}'"
+            if not _is_peak_hour(now_hour_est):
+                log.debug(f"[Scheduler] Off-peak ({now_hour_est}:xx EST) — holding. Peak: 6-9am, 7-11pm EST.")
+            else:
+                clusters = fetch_momentum_clusters(
+                    min_cluster_usd = MOMENTUM_MIN_USD,
+                    min_trade_count = MOMENTUM_MIN_TRADES,
+                    window_minutes  = MOMENTUM_WINDOW_M,
+                    max_age_minutes = FRESHNESS_MAX_MINUTES,
                 )
-                trade_dict = _cluster_to_trade_dict(cluster)
-                success = run_tiktok_video_for_trade(trade_dict, secrets)
-                if success:
-                    _mark_market_fired(market_key, market_cooldown)
-                    video_count_by_day[today] = videos_today + 1
-                    videos_today += 1
-                    fired = True
-                    log.info(f"[Layer 2] ✅ Video generated. Total today: {videos_today}/{DAILY_BURST_CAP}")
-                    if videos_today >= DAILY_BURST_CAP:
-                        break
-                break  # Only fire one cluster per poll cycle to avoid burst spam
+
+                for cluster in clusters:
+                    market_key = cluster.get("market_id") or cluster.get("market_title", "")
+                    if _is_market_on_cooldown(market_key, market_cooldown):
+                        log.info(f"[Layer 2] Cluster on cooldown: '{cluster['market_title'][:40]}'")
+                        continue
+
+                    log.info(
+                        f"[Layer 2] MOMENTUM CLUSTER: {cluster['trade_count']} trades, "
+                        f"${cluster['total_usd']:,.0f} on '{cluster['market_title'][:50]}'"
+                    )
+                    trade_dict = _cluster_to_trade_dict(cluster)
+                    success = run_tiktok_video_for_trade(trade_dict, secrets)
+                    if success:
+                        _mark_market_fired(market_key, market_cooldown)
+                        video_count_by_day[today] = videos_today + 1
+                        videos_today += 1
+                        fired = True
+                        log.info(f"[Layer 2] Video generated. Total today: {videos_today}/{DAILY_BURST_CAP}")
+                        if videos_today >= DAILY_BURST_CAP:
+                            break
+                    break  # Only fire one cluster per poll cycle
 
             # ══════════════════════════════════════════════════════════════════
             # LAYER 3 — Single Fresh Large Trade
             # ══════════════════════════════════════════════════════════════════
-            if not fired and videos_today < DAILY_BURST_CAP:
+            if not fired and videos_today < DAILY_BURST_CAP and _is_peak_hour(now_hour_est):
                 fresh_trades = fetch_recent_whale_trades(
                     min_usd         = SINGLE_TRADE_MIN_USD,
                     hours_back      = 4,           # Only look 4h back for single-trade path

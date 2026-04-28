@@ -322,12 +322,13 @@ def create_video(
     safe_cap   = _escape_drawtext(caption)
     safe_font  = font_path.replace("\\", "/")
 
-    has_chart  = bool(chart_image_path and os.path.exists(str(chart_image_path)))
-    has_audio  = bool(audio_path and os.path.exists(str(audio_path)))
-    has_logo   = bool(logo_path and os.path.exists(str(logo_path)))
+    has_chart       = bool(chart_image_path and os.path.exists(str(chart_image_path)))
+    chart_is_animated = has_chart and os.path.isdir(str(chart_image_path))  # directory = animated frames
+    has_audio       = bool(audio_path and os.path.exists(str(audio_path)))
+    has_logo        = bool(logo_path and os.path.exists(str(logo_path)))
 
     if not has_chart:
-        log.error(f"[FFmpeg] Chart file missing: {chart_image_path}")
+        log.error(f"[FFmpeg] Chart missing: {chart_image_path}")
         _cleanup(bg_local)
         return None
 
@@ -348,16 +349,24 @@ def create_video(
     od = audio_dur   # outro start time (shorthand)
 
     # ── 5. FFmpeg inputs ──────────────────────────────────────────────────────
-    # Index 0: background (video loop streamed or static image looped)
-    # Index 1: chart PNG
+    # Index 0: background (video loop or static image)
+    # Index 1: chart (image sequence directory or single PNG)
     # Index 2: logo PNG (if present)
     # Index 2 or 3: audio MP3 (if present)
-    if is_video_bg:
-        # Real video loop: stream_loop -1 makes it loop indefinitely (truncated by -t later)
-        ff_inputs: list[str] = ["-stream_loop", "-1", "-i", bg_local, "-i", chart_image_path]
+    from chart_generator import ANIM_FRAMES  # keep in sync with frame count
+    chart_last_frame = ANIM_FRAMES - 1       # for loop= freeze filter
+
+    if chart_is_animated:
+        frames_pattern = os.path.join(str(chart_image_path), "frame_%03d.png")
+        chart_input = ["-framerate", "30", "-i", frames_pattern]
+        log.info(f"[FFmpeg] Animated chart: {ANIM_FRAMES} frames from {chart_image_path}")
     else:
-        # Static image: -loop 1 generates frames at output fps
-        ff_inputs: list[str] = ["-loop", "1", "-i", bg_local, "-i", chart_image_path]
+        chart_input = ["-i", str(chart_image_path)]
+
+    if is_video_bg:
+        ff_inputs: list[str] = ["-stream_loop", "-1", "-i", bg_local] + chart_input
+    else:
+        ff_inputs: list[str] = ["-loop", "1", "-i", bg_local] + chart_input
 
     logo_idx = None
     if has_logo:
@@ -385,8 +394,11 @@ def create_video(
             "[bg_big]crop=w=1080:h=1920:x='min(t*12\\,216)':y='384',setsar=1[bg]",
         ]
 
-    # B) Scale chart to full 1080px wide (PNG alpha preserved for transparency)
-    fp.append("[1:v]scale=1080:-1[chart_s]")
+    # B) Scale chart + freeze on last frame if animated (loop=-1 loops indefinitely from start=last)
+    if chart_is_animated:
+        fp.append(f"[1:v]scale=1080:-1,loop=loop=-1:size=1:start={chart_last_frame}[chart_s]")
+    else:
+        fp.append("[1:v]scale=1080:-1[chart_s]")
 
     # C) Chart overlay — visible during main content only (0 to audio_dur)
     main_enable = f":enable='between(t,0,{od:.2f})'" if has_audio else ""
