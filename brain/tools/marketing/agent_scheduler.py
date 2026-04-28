@@ -52,7 +52,7 @@ log = logging.getLogger(__name__)
 POLL_INTERVAL_S         = 60          # Seconds between each DB poll
 DAILY_BURST_CAP         = 3           # Max videos generated per calendar day
 PER_MARKET_COOLDOWN_H   = 4           # Min hours before re-covering the same market
-FRESHNESS_MAX_MINUTES   = 90          # Layer 1: reject trades older than this
+FRESHNESS_MAX_MINUTES   = 480         # Layer 1: max trade age (8h — allows held trades to survive until next peak window)
 MOMENTUM_WINDOW_M       = 120         # Layer 2: rolling window to detect clusters
 MOMENTUM_MIN_TRADES     = 3           # Layer 2: min individual trades to qualify
 MOMENTUM_MIN_USD        = 50_000      # Layer 2: min combined USD to qualify
@@ -215,13 +215,26 @@ def main():
             if not fired and videos_today < DAILY_BURST_CAP and _is_peak_hour(now_hour_est):
                 fresh_trades = fetch_recent_whale_trades(
                     min_usd         = SINGLE_TRADE_MIN_USD,
-                    hours_back      = 4,           # Only look 4h back for single-trade path
+                    hours_back      = 8,           # Match FRESHNESS_MAX_MINUTES (480m) so held trades are picked up
                     limit           = 10,
                     max_age_minutes = FRESHNESS_MAX_MINUTES,
                 )
                 best = pick_best_trade(fresh_trades)
 
                 if best:
+                    # Auto-detect if this is a held trade (>90min old) and flag for recap framing
+                    # so the LLM uses past-tense language instead of "BREAKING RIGHT NOW".
+                    # created_at is an ISO string (see whale_data_fetcher line 160).
+                    try:
+                        from datetime import datetime as _dt
+                        raw_ts   = best.get('created_at', '')
+                        trade_dt = _dt.fromisoformat(raw_ts.replace('Z', '+00:00')) if raw_ts else now_utc
+                        trade_age_m = (now_utc - trade_dt).total_seconds() / 60
+                    except Exception:
+                        trade_age_m = 0
+                    if trade_age_m > 90:
+                        best["_is_recap"] = True
+                        log.info(f"[Layer 3] Trade is {trade_age_m:.0f}m old — flagged as RECAP (past-tense framing).")
                     market_key = best.get("market_id") or best.get("market_title", "")
                     if _is_market_on_cooldown(market_key, market_cooldown):
                         log.info(f"[Layer 3] Trade on cooldown: '{best['market_title'][:40]}'")
