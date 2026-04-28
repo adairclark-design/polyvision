@@ -261,7 +261,10 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
-# ── Data Models ───────────────────────────────────────────────────────────────
+# ── Routers ───────────────────────────────────────────────────────────────────
+app.include_router(paper_trading.router)
+
+
 class TradeEvent(BaseModel):
     id:            str
     market_id:     str
