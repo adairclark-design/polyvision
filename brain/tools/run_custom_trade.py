@@ -25,14 +25,15 @@ import logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 
 best_trade = {
-    "usd_value": 100000,
-    "market_title": "Will SpaceX reach Mars by 2026?",
-    "outcome": "YES",
-    "price": 0.40,
-    "source": "Polymarket",
-    "trader_handle": "Whale",
+    "usd_value": 126000,
+    "market_title": "France to win the 2026 FIFA World Cup",
+    "outcome": "No",
+    "price": 0.18,
+    "source": "POLYMARKET",
+    "trader_handle": "Dishonest-Bloom",
+    "wallet_win_rate": 0.82,
     "age_label": "just now",
-    "id": "custom_trade_spacex"
+    "id": "custom_trade_france_fifa_126k"
 }
 
 # Ensure RESEND_API_KEY is properly set if it exists or fallback

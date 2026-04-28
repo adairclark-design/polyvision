@@ -264,8 +264,9 @@ def create_video(
     caption: str,
     bg_image_url: str,
     logo_path: str | None = None,
-    include_music: bool = False,   # API-compat param — unused in FFmpeg path
-    amount_str: str | None = None, # Dollar amount for animated slam intro (e.g. '$126,606')
+    include_music: bool = False,
+    amount_str: str | None = None,
+    bg_local_path: str | None = None,  # If set, skip CDN download and use this file directly
 ) -> str | None:
     """
     Render a 1080×1920 TikTok-ready MP4 using local FFmpeg (zero API cost).
@@ -298,13 +299,18 @@ def create_video(
     is_video_bg = False
     bg_local: str | None = None
 
-    if loop_url:
+    # Priority 0: use a pre-downloaded local file (e.g. Kling MP4 already on disk)
+    if bg_local_path and os.path.exists(bg_local_path) and os.path.getsize(bg_local_path) > 1000:
+        bg_local = bg_local_path
+        is_video_bg = bg_local_path.endswith(".mp4")
+        log.info(f"[FFmpeg] Using pre-downloaded local background: {bg_local_path} ({'video' if is_video_bg else 'image'})")
+    elif loop_url:
         bg_local = _download_bg(loop_url)
         is_video_bg = bool(bg_local and bg_local.endswith(".mp4"))
         if is_video_bg:
             log.info("[FFmpeg] Using real video loop background.")
 
-    if not is_video_bg:
+    if not is_video_bg and not bg_local:
         log.info("[FFmpeg] Falling back to static background image (Ken Burns effect).")
         bg_local = _download_bg(bg_image_url)
         if not bg_local:

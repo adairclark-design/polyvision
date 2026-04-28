@@ -463,6 +463,7 @@ def run_tiktok_video_for_trade(best: dict, secrets: dict, dry_run: bool = False)
             bg_image_url=bg_url,
             logo_path=outro_path,
             amount_str=f"${best.get('usd_value', 0):,.0f}",
+            bg_local_path=bg_path,  # pass local Kling file — avoids CDN re-download failure
         )
         if not video_url:
             log.error("Video render failed.")
