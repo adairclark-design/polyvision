@@ -145,6 +145,32 @@ def run_telemetry():
     except Exception as e:
         log.error(f"[Telemetry] Database error: {e}")
 
+    # ── Warn about orphaned rows (no post_id AND no manual feedback) ─────────
+    # These are videos delivered by email for manual upload that have never had
+    # views reported back. The RL loop cannot learn from them.
+    # Fix: open the feedback link from the delivery email after uploading.
+    try:
+        conn = psycopg2.connect(db_url)
+        cur  = conn.cursor()
+        cur.execute("""
+            SELECT COUNT(*) FROM video_history
+            WHERE (post_id IS NULL OR post_id = '')
+              AND (impressions IS NULL OR impressions = 0)
+              AND created_at < NOW() - INTERVAL '6 hours';
+        """)
+        orphan_count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        if orphan_count > 0:
+            log.warning(
+                f"[Telemetry] ⚠️  {orphan_count} video(s) have ZERO engagement data "
+                f"(no post_id, no manual feedback). RL loop is running on empty for these. "
+                f"Log views via the link in your delivery email or at: "
+                f"https://polyvision-production.up.railway.app/video/feedback"
+            )
+    except Exception as e:
+        log.warning(f"[Telemetry] Orphan check failed (non-fatal): {e}")
+
 
 if __name__ == "__main__":
     logging.basicConfig(

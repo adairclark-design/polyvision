@@ -265,6 +265,7 @@ def create_video(
     bg_image_url: str,
     logo_path: str | None = None,
     include_music: bool = False,   # API-compat param — unused in FFmpeg path
+    amount_str: str | None = None, # Dollar amount for animated slam intro (e.g. '$126,606')
 ) -> str | None:
     """
     Render a 1080×1920 TikTok-ready MP4 using local FFmpeg (zero API cost).
@@ -441,10 +442,36 @@ def create_video(
             f"shadowcolor=black@0.9:"
             f"shadowx=2:shadowy=2:"
             f"{outro_enable}"
-            f"[final]"
+            f"[main_content]"
         )
     else:
-        fp.append(f"[{cur}]copy[final]")
+        fp.append(f"[{cur}]copy[main_content]")
+
+    # G) Dollar slam intro — 0.6s black card with amount slammed in white text
+    #    Prepended via concat so it plays BEFORE the main content (no audio yet).
+    SLAM_DURATION = 0.6
+    has_slam = bool(amount_str)
+    if has_slam:
+        safe_amount = _escape_drawtext(amount_str)
+        slam_idx = len(ff_inputs) // 2 + (1 if is_video_bg else 0)  # will be appended last
+        fp.append(
+            f"color=black:size=1080x1920:rate=30:d={SLAM_DURATION}[slam_bg]"
+        )
+        fp.append(
+            f"[slam_bg]drawtext="
+            f"text='{safe_amount}':"
+            f"x=(w-text_w)/2:"
+            f"y=(h-text_h)/2:"
+            f"fontsize=148:"
+            f"fontcolor=white:"
+            f"fontfile='{safe_font}':"
+            f"shadowcolor=black@0.6:"
+            f"shadowx=5:shadowy=5"
+            f"[slam_card]"
+        )
+        fp.append("[slam_card][main_content]concat=n=2:v=1:a=0[final]")
+    else:
+        fp.append("[main_content]copy[final]")
 
     filter_complex = ";".join(fp)
 
@@ -454,12 +481,15 @@ def create_video(
            "-map", "[final]"]
 
     if has_audio:
-        # Pad audio with silence for the outro, set explicit total duration
+        slam_ms = int(SLAM_DURATION * 1000) if has_slam else 0
+        slam_total = total_dur + (SLAM_DURATION if has_slam else 0)
+        af_chain = f"adelay={slam_ms}|{slam_ms},apad=pad_dur={OUTRO_DURATION}" if has_slam else f"apad=pad_dur={OUTRO_DURATION}"
         cmd += ["-map", f"{audio_idx}:a",
-                "-af", f"apad=pad_dur={OUTRO_DURATION}",
-                "-t", f"{total_dur:.2f}"]
+                "-af", af_chain,
+                "-t", f"{slam_total:.2f}"]
     else:
-        cmd += ["-t", "30"]   # 30s silent fallback
+        silent_dur = 30 + (SLAM_DURATION if has_slam else 0)
+        cmd += ["-t", f"{silent_dur:.2f}"]   # silent fallback
 
     cmd += [
         "-c:v", "libx264", "-crf", "23", "-preset", "fast",
@@ -471,7 +501,8 @@ def create_video(
     ]
 
     # ── 8. Render ─────────────────────────────────────────────────────────────
-    log.info(f"[FFmpeg] Rendering {total_dur:.1f}s video (main={audio_dur:.1f}s + outro={OUTRO_DURATION:.0f}s)...")
+    slam_label = f" + {SLAM_DURATION}s slam intro" if has_slam else ""
+    log.info(f"[FFmpeg] Rendering {total_dur:.1f}s video (main={audio_dur:.1f}s + outro={OUTRO_DURATION:.0f}s{slam_label})...")
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=360)
     except subprocess.TimeoutExpired:

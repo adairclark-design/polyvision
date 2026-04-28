@@ -285,6 +285,17 @@ def deliver_tiktok_package_email(
         <p style="font-size: 13px; color: #6b7280;">
             <strong>How to post:</strong> Download the <code>.mp4</code> straight to your iPhone. Open TikTok or Instagram Reels, select the video, tap <em>'Add Sound'</em>, search for a trending native track, and turn it down to 1% volume. Paste the Full Platform Caption above.
         </p>
+
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;" />
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px;">
+            <p style="margin: 0 0 8px; font-weight: 700; color: #15803d;">📊 Log Views After Posting (10 seconds)</p>
+            <p style="margin: 0 0 12px; font-size: 13px; color: #166534;">Once you upload and the video gets views, tap the link below to feed the RL system. This is what makes future videos smarter.</p>
+            <a href="https://polyvision-production.up.railway.app/video/feedback?trade_id={best.get('id', '')}"
+               style="display: inline-block; background: #16a34a; color: white; text-decoration: none;
+                      border-radius: 6px; padding: 10px 20px; font-weight: 700; font-size: 14px;">
+                → Log Views for This Video
+            </a>
+        </div>
     </div>
     """
 
@@ -451,6 +462,7 @@ def run_tiktok_video_for_trade(best: dict, secrets: dict, dry_run: bool = False)
             caption=overlay_caption,
             bg_image_url=bg_url,
             logo_path=outro_path,
+            amount_str=f"${best.get('usd_value', 0):,.0f}",
         )
         if not video_url:
             log.error("Video render failed.")

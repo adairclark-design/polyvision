@@ -942,6 +942,103 @@ async def ws_pulse(websocket: WebSocket):
 
 
 
+# ── Video RL Feedback Endpoints ───────────────────────────────────────────────
+
+@app.get('/video/feedback')
+async def video_feedback_form(trade_id: str = ''):
+    """Serve a browser-friendly HTML form to log TikTok/Reels engagement metrics."""
+    from fastapi.responses import HTMLResponse
+    html = f"""
+    <!DOCTYPE html><html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>PolyVision — Log Video Performance</title>
+      <style>
+        body {{ font-family: -apple-system, sans-serif; background: #0d1117; color: #e6edf3;
+                display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }}
+        .card {{ background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+                 padding: 32px; width: 100%; max-width: 420px; }}
+        h2 {{ margin: 0 0 8px; color: #10B981; }}
+        p  {{ margin: 0 0 24px; color: #8b949e; font-size: 14px; }}
+        label {{ display: block; font-size: 13px; color: #8b949e; margin-bottom: 6px; }}
+        input {{ width: 100%; box-sizing: border-box; background: #0d1117; border: 1px solid #30363d;
+                 border-radius: 8px; color: #e6edf3; padding: 10px 14px; font-size: 16px; margin-bottom: 16px; }}
+        button {{ width: 100%; background: #10B981; color: #000; border: none; border-radius: 8px;
+                  padding: 12px; font-size: 16px; font-weight: 700; cursor: pointer; }}
+        .success {{ display: none; color: #10B981; text-align: center; margin-top: 16px; font-weight: 600; }}
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h2>📊 Log Video Performance</h2>
+        <p>Enter the views and likes from your TikTok/Reels post to feed the RL system.</p>
+        <form id="f">
+          <label>Trade ID</label>
+          <input name="trade_id" value="{trade_id}" placeholder="trade_id" required>
+          <label>Total Views</label>
+          <input name="views" type="number" min="0" placeholder="e.g. 4200" required>
+          <label>Total Likes</label>
+          <input name="likes" type="number" min="0" placeholder="e.g. 180" required>
+          <button type="submit">Submit →</button>
+        </form>
+        <div class="success" id="ok">✅ Logged! RL loop updated.</div>
+      </div>
+      <script>
+        document.getElementById('f').addEventListener('submit', async e => {{
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          const r = await fetch('/video/feedback', {{
+            method: 'POST',
+            headers: {{'Content-Type': 'application/json'}},
+            body: JSON.stringify({{
+              trade_id: fd.get('trade_id'),
+              views: parseInt(fd.get('views')),
+              likes: parseInt(fd.get('likes')),
+            }})
+          }});
+          if (r.ok) {{ document.getElementById('ok').style.display = 'block'; e.target.style.display = 'none'; }}
+        }});
+      </script>
+    </body></html>
+    """
+    return HTMLResponse(html)
+
+
+class VideoFeedbackRequest(BaseModel):
+    trade_id: str
+    views:    int
+    likes:    int = 0
+
+
+@app.post('/video/feedback')
+async def submit_video_feedback(body: VideoFeedbackRequest):
+    """Write TikTok/Reels engagement metrics back into video_history for RL consumption."""
+    if not DATABASE_URL:
+        raise HTTPException(503, 'DATABASE_URL not configured.')
+    try:
+        import psycopg2
+        with psycopg2.connect(DATABASE_URL) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """UPDATE video_history
+                       SET impressions = %s,
+                           upvotes     = %s
+                       WHERE trade_id = %s""",
+                    (body.views, body.likes, body.trade_id)
+                )
+                updated = cur.rowcount
+            conn.commit()
+        if updated == 0:
+            raise HTTPException(404, f'No video_history row found for trade_id={body.trade_id}')
+        log.info(f'[RL Feedback] trade_id={body.trade_id} | views={body.views:,} | likes={body.likes:,}')
+        return {'success': True, 'trade_id': body.trade_id, 'views': body.views, 'likes': body.likes}
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f'[RL Feedback] DB write failed: {e}')
+        raise HTTPException(500, 'Failed to write feedback to database.')
+
 
 # ── Stripe Checkout & Subscription Management ────────────────────────────────
 
