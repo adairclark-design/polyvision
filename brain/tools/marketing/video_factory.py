@@ -353,7 +353,7 @@ def create_video(
     # Index 1: chart (image sequence directory or single PNG)
     # Index 2: logo PNG (if present)
     # Index 2 or 3: audio MP3 (if present)
-    from chart_generator import ANIM_FRAMES  # keep in sync with frame count
+    ANIM_FRAMES      = 30  # Must match chart_generator.ANIM_FRAMES — no cross-import to avoid path issues
     chart_last_frame = ANIM_FRAMES - 1       # for loop= freeze filter
 
     if chart_is_animated:
