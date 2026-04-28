@@ -2,6 +2,7 @@ import os
 import sys
 import json
 from pathlib import Path
+
 def _load_secrets(path):
     try:
         with open(path, "r") as f:
@@ -14,10 +15,12 @@ def _load_secrets(path):
         print(f"Failed to load secrets: {e}")
         return {}
 
-secrets = _load_secrets("/Users/adairclark/Desktop/AntiGravity/polyvision_deploy/secrets.json")
+# Fix: Use relative path for secrets.json
+secrets_path = os.path.join(os.path.dirname(__file__), "../../secrets.json")
+secrets = _load_secrets(secrets_path)
 
-# Insert path to marketing tools
-sys.path.insert(0, "/Users/adairclark/Desktop/AntiGravity/polyvision_deploy/brain/tools/marketing")
+# Fix: Use relative path for marketing tools
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "marketing"))
 
 from agent_generator import run_tiktok_video_for_trade
 import logging
@@ -43,6 +46,7 @@ print("Running pipeline for custom trade...")
 success = run_tiktok_video_for_trade(best_trade, secrets, dry_run=False)
 
 if success:
-    print("\n✅ Successfully triggered the video pipeline and dispatched via email!")
+    print("Successfully ran pipeline for custom trade!")
 else:
-    print("\n❌ Pipeline failed.")
+    print("Failed to run pipeline for custom trade.")
+
