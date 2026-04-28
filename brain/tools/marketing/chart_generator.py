@@ -96,7 +96,7 @@ def render_whale_graphic(trade: dict, output_path: str) -> bool:
         alert_text  = "🚨 POLYVISION WHALE ALERT"
         alert_color = "#5C5FE5"
     bbox = draw.textbbox((0, 0), alert_text, font=font_alert)
-    draw.text(((width - (bbox[2] - bbox[0])) / 2, 90), alert_text, fill=alert_color, font=font_alert)
+    draw.text(((width - (bbox[2] - bbox[0])) / 2, 60), alert_text, fill=alert_color, font=font_alert)
 
     import textwrap
     wrapped_market = textwrap.fill(market, width=26)

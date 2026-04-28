@@ -440,9 +440,9 @@ def run_tiktok_video_for_trade(best: dict, secrets: dict, dry_run: bool = False)
 
     # Step 5: Render FRESH video with PolyVision tools
     log.info("[TikTok] Rendering High-Def video via Creatomate...")
-    # Truncate caption to 60 chars — Creatomate text element height is 15% (~288px).
-    # ai_copywriter hook_text can be 1-2 sentences; anything over ~60 chars overflows.
-    overlay_caption = caption[:60].rstrip()
+    # Truncate caption to 35 chars — ai_copywriter hook_text must use numerals not words
+    # (e.g. '$126K Move — Yes') so 35 chars is sufficient and prevents FFmpeg canvas overflow.
+    overlay_caption = caption[:35].rstrip()
     video_url = None
     if not dry_run:
         video_url = create_video(

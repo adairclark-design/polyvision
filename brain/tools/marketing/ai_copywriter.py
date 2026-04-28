@@ -67,7 +67,7 @@ CRITICAL: To enforce the precise "Athletic Coach" vibe for the AI Text-To-Speech
 You will be provided with raw JSON data containing the trade details.
 You must return your output exclusively as a flat JSON object with EXACTLY the following 6 keys:
 {
-  "hook_text": "A punchy 6-8 word video overlay headline. No sentence punctuation. Bold and direct like a news chyron. Example: '$340K Smart Money Signal — Watch This'",
+  "hook_text": "A punchy on-screen video headline. STRICT RULES: Max 35 characters total. Use numerals and symbols, NOT words (e.g. '$126K Move — Yes' NOT 'One Hundred Twenty-Six Thousand Dollar Move'). No sentence punctuation. Bold and direct like a news chyron.",
   "script_text": "The exact script to be read by the TTS voiceover (around 15-20 seconds of speaking). Must include the CTA. CRITICAL: Write ALL dollar amounts in fully spoken form — e.g. 'thirty-six thousand dollars' NOT '$36K' or '$36,000'. Never use '$' symbols or 'K'/'M' abbreviations inside script_text.",
   "title": "A short, punchy title for TikTok/Reels featuring emojis.",
   "description": "The description body text for the platform upload.",

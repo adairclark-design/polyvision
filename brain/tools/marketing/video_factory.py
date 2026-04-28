@@ -409,18 +409,19 @@ def create_video(
             )
             cur = "v3"
 
-    # E) Caption drawtext — top 8%, visible during main content only
+    # E) Caption drawtext — below the WHALE ALERT badge (~13.5% from top), visible during main content only
     fp.append(
         f"[{cur}]drawtext="
         f"text='{safe_cap}':"
         f"x=(w-text_w)/2:"
-        f"y=h*0.08:"
-        f"fontsize=52:"
+        f"y=h*0.135:"
+        f"fontsize=40:"
         f"fontcolor=white:"
         f"fontfile='{safe_font}':"
         f"shadowcolor=black@0.85:"
         f"shadowx=3:shadowy=3:"
-        f"box=1:boxcolor=black@0.40:boxborderw=14"
+        f"fix_bounds=1:"
+        f"box=1:boxcolor=black@0.45:boxborderw=16"
         f"{main_enable}"
         f"[v_cap]"
     )
