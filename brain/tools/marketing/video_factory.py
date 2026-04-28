@@ -183,12 +183,84 @@ def _find_font() -> str:
 
 
 def _escape_drawtext(text: str) -> str:
-    """Escape caption text for FFmpeg drawtext filter."""
+    """Escape caption text for FFmpeg drawtext filter (kept for legacy compat)."""
     text = text.replace("\\", "\\\\")   # must be first
     text = text.replace("'",  "\\'")
     text = text.replace(":",  "\\:")
     text = text.replace("%",  "\\%")
     return text
+
+
+def _render_text_overlay(
+    text: str,
+    canvas_w: int,
+    canvas_h: int,
+    font_size: int,
+    text_color: tuple,
+    bg_color: tuple | None = None,
+    bg_pad: int = 16,
+    out_path: str | None = None,
+) -> str:
+    """
+    Render `text` onto a transparent RGBA PNG using Pillow.
+    Returns the path to the saved PNG (temp file if out_path is None).
+    This replaces FFmpeg drawtext, which requires libfreetype compiled in.
+    """
+    from PIL import Image, ImageDraw, ImageFont
+    import tempfile
+
+    # Try to find a usable TTF font; fall back to Pillow's built-in bitmap font
+    _MAC_FONTS = [
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/Library/Fonts/Arial Bold.ttf",
+        "/opt/homebrew/share/fonts/liberation/LiberationSans-Bold.ttf",
+    ]
+    _LINUX_FONTS = [
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ]
+    font = None
+    for fp in _MAC_FONTS + _LINUX_FONTS:
+        if os.path.exists(fp):
+            try:
+                font = ImageFont.truetype(fp, font_size)
+                break
+            except Exception:
+                continue
+    if font is None:
+        font = ImageFont.load_default()
+
+    # Measure text size
+    dummy = Image.new("RGBA", (1, 1))
+    draw  = ImageDraw.Draw(dummy)
+    bbox  = draw.textbbox((0, 0), text, font=font)
+    tw    = bbox[2] - bbox[0]
+    th    = bbox[3] - bbox[1]
+
+    # Create transparent canvas the same size as the video frame
+    img  = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    tx = (canvas_w - tw) // 2
+    ty = (canvas_h - th) // 2   # caller adjusts via y= in overlay filter
+
+    if bg_color:
+        draw.rectangle(
+            [tx - bg_pad, ty - bg_pad, tx + tw + bg_pad, th + ty + bg_pad],
+            fill=bg_color,
+        )
+    # Drop shadow
+    draw.text((tx + 3, ty + 3), text, font=font, fill=(0, 0, 0, 180))
+    draw.text((tx, ty), text, font=font, fill=text_color)
+
+    if out_path is None:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False, dir="/tmp") as f:
+            out_path = f.name
+    img.save(out_path, "PNG")
+    return out_path
 
 
 def _download_bg(url: str) -> str | None:
@@ -256,6 +328,32 @@ def _get_random_loop_url() -> str | None:
         log.warning(f"[R2] Could not list background loops ({e}) — falling back to static image.")
         return None
 
+def _boomerang_video(mp4_path: str) -> str:
+    """Takes a short MP4 and creates a seamless forward+reverse boomerang loop."""
+    import subprocess
+    import os
+    if mp4_path.endswith("_boomerang.mp4"):
+        return mp4_path
+    
+    out_path = mp4_path.replace(".mp4", "_boomerang.mp4")
+    if os.path.exists(out_path) and os.path.getsize(out_path) > 1000:
+        return out_path
+        
+    log.info(f"[FFmpeg] Creating seamless boomerang loop for {mp4_path}...")
+    cmd = [
+        "ffmpeg", "-y", "-i", mp4_path,
+        "-filter_complex", "[0:v]reverse[r];[0:v][r]concat=n=2:v=1:a=0[outv]",
+        "-map", "[outv]", 
+        "-c:v", "libx264", "-crf", "23", "-preset", "fast",
+        "-pix_fmt", "yuv420p",
+        out_path
+    ]
+    subprocess.run(cmd, capture_output=True, check=False)
+    
+    if os.path.exists(out_path) and os.path.getsize(out_path) > 1000:
+        return out_path
+    return mp4_path
+
 
 # ── Public Interface ──────────────────────────────────────────────────────────
 def create_video(
@@ -303,11 +401,14 @@ def create_video(
     if bg_local_path and os.path.exists(bg_local_path) and os.path.getsize(bg_local_path) > 1000:
         bg_local = bg_local_path
         is_video_bg = bg_local_path.endswith(".mp4")
-        log.info(f"[FFmpeg] Using pre-downloaded local background: {bg_local_path} ({'video' if is_video_bg else 'image'})")
+        if is_video_bg:
+            bg_local = _boomerang_video(bg_local)
+        log.info(f"[FFmpeg] Using pre-downloaded local background: {bg_local} ({'video' if is_video_bg else 'image'})")
     elif loop_url:
         bg_local = _download_bg(loop_url)
         is_video_bg = bool(bg_local and bg_local.endswith(".mp4"))
         if is_video_bg:
+            bg_local = _boomerang_video(bg_local)
             log.info("[FFmpeg] Using real video loop background.")
 
     if not is_video_bg and not bg_local:
@@ -329,9 +430,27 @@ def create_video(
     safe_font  = font_path.replace("\\", "/")
 
     has_chart       = bool(chart_image_path and os.path.exists(str(chart_image_path)))
-    chart_is_animated = has_chart and os.path.isdir(str(chart_image_path))  # directory = animated frames
+    chart_is_animated = has_chart and os.path.isdir(str(chart_image_path))
     has_audio       = bool(audio_path and os.path.exists(str(audio_path)))
     has_logo        = bool(logo_path and os.path.exists(str(logo_path)))
+
+    # ── Pre-render text overlays with Pillow (avoids FFmpeg drawtext/libfreetype) ──
+    W, H = 1080, 1920
+    caption_overlay_path = _render_text_overlay(
+        text=caption, canvas_w=W, canvas_h=H,
+        font_size=40, text_color=(255, 255, 255, 255),
+        bg_color=(0, 0, 0, 115), bg_pad=16,
+    )
+    brand_overlay_path = _render_text_overlay(
+        text="polyvision.app", canvas_w=W, canvas_h=H,
+        font_size=64, text_color=(16, 185, 129, 255),
+    )
+    slam_overlay_path = None
+    if amount_str:
+        slam_overlay_path = _render_text_overlay(
+            text=amount_str, canvas_w=W, canvas_h=H,
+            font_size=148, text_color=(255, 255, 255, 255),
+        )
 
     if not has_chart:
         log.error(f"[FFmpeg] Chart missing: {chart_image_path}")
@@ -384,6 +503,10 @@ def create_video(
         audio_idx = (logo_idx + 1) if logo_idx is not None else 2
         ff_inputs += ["-i", audio_path]
 
+    # Track the next available FFmpeg input index for Pillow overlay PNGs.
+    # Inputs so far: 0=bg, 1=chart, optionally 2=logo, optionally 2or3=audio
+    next_idx = 2 + (1 if has_logo else 0) + (1 if has_audio else 0)
+
     # ── 6. filter_complex ─────────────────────────────────────────────────────
     if is_video_bg:
         # A) Real video loop: scale to fill 1080×1920 and crop center.
@@ -411,80 +534,54 @@ def create_video(
     fp.append(f"[bg][chart_s]overlay=x=(W-w)/2:y=(H-h)/2{main_enable}[v1]")
     cur = "v1"
 
-    # D) Logo layers: small watermark (main) + large centered (outro)
-    if has_logo:
-        # Small corner watermark during main content
-        fp.append(f"[{logo_idx}:v]scale=140:-1[logo_small]")
-        fp.append(f"[{cur}][logo_small]overlay=x=W-w-20:y=H-h-30{main_enable}[v2]")
-        cur = "v2"
+    # D) Logo: large centered during outro only (no corner watermark — cleaner look)
+    if has_logo and has_audio:
+        fp.append(
+            f"[{cur}][{logo_idx}:v]overlay="
+            f"x=0:y=0:"
+            f"enable='between(t,{od:.2f},{total_dur:.2f})'[v3]"
+        )
+        cur = "v3"
+    elif has_logo:
+        pass  # no logo overlay for silent renders
 
-        if has_audio:
-            # Large centered logo during 3-second outro
-            fp.append(f"[{logo_idx}:v]scale=360:-1[logo_big]")
-            fp.append(
-                f"[{cur}][logo_big]overlay="
-                f"x=(W-w)/2:y=(H-h)/2-140:"
-                f"enable='between(t,{od:.2f},{total_dur:.2f})'[v3]"
-            )
-            cur = "v3"
-
-    # E) Caption drawtext — below the WHALE ALERT badge (~13.5% from top), visible during main content only
+    # E) Caption overlay (Pillow PNG) — centred horizontally, 13.5% from top
+    caption_idx = next_idx
+    next_idx += 1
+    ff_inputs += ["-i", caption_overlay_path]
     fp.append(
-        f"[{cur}]drawtext="
-        f"text='{safe_cap}':"
-        f"x=(w-text_w)/2:"
-        f"y=h*0.135:"
-        f"fontsize=40:"
-        f"fontcolor=white:"
-        f"fontfile='{safe_font}':"
-        f"shadowcolor=black@0.85:"
-        f"shadowx=3:shadowy=3:"
-        f"fix_bounds=1:"
-        f"box=1:boxcolor=black@0.45:boxborderw=16"
-        f"{main_enable}"
-        f"[v_cap]"
+        f"[{cur}][{caption_idx}:v]overlay="
+        f"x=0:y=round(H*0.135-overlay_h/2)"
+        f"{main_enable}[v_cap]"
     )
     cur = "v_cap"
 
-    # F) "polyvision.app" brand text — visible during outro only (brand green)
+    # F) Brand text overlay — visible during outro only
     if has_audio and has_logo:
-        outro_enable = f"enable='between(t,{od:.2f},{total_dur:.2f})'"
+        outro_enable = f":enable='between(t,{od:.2f},{total_dur:.2f})'"
+        brand_idx = next_idx
+        next_idx += 1
+        ff_inputs += ["-i", brand_overlay_path]
         fp.append(
-            f"[{cur}]drawtext="
-            f"text='polyvision.app':"
-            f"x=(w-text_w)/2:"
-            f"y=h*0.72:"
-            f"fontsize=64:"
-            f"fontcolor=#10B981:"
-            f"fontfile='{safe_font}':"
-            f"shadowcolor=black@0.9:"
-            f"shadowx=2:shadowy=2:"
-            f"{outro_enable}"
-            f"[main_content]"
+            f"[{cur}][{brand_idx}:v]overlay="
+            f"x=0:y=round(H*0.72-overlay_h/2)"
+            f"{outro_enable}[main_content]"
         )
     else:
         fp.append(f"[{cur}]copy[main_content]")
 
-    # G) Dollar slam intro — 0.6s black card with amount slammed in white text
-    #    Prepended via concat so it plays BEFORE the main content (no audio yet).
+    # G) Dollar slam intro — 0.6s black card with Pillow-rendered amount
     SLAM_DURATION = 0.6
-    has_slam = bool(amount_str)
+    has_slam = bool(amount_str and slam_overlay_path)
     if has_slam:
-        safe_amount = _escape_drawtext(amount_str)
-        slam_idx = len(ff_inputs) // 2 + (1 if is_video_bg else 0)  # will be appended last
         fp.append(
             f"color=black:size=1080x1920:rate=30:d={SLAM_DURATION}[slam_bg]"
         )
+        slam_idx = next_idx
+        ff_inputs += ["-i", slam_overlay_path]
         fp.append(
-            f"[slam_bg]drawtext="
-            f"text='{safe_amount}':"
-            f"x=(w-text_w)/2:"
-            f"y=(h-text_h)/2:"
-            f"fontsize=148:"
-            f"fontcolor=white:"
-            f"fontfile='{safe_font}':"
-            f"shadowcolor=black@0.6:"
-            f"shadowx=5:shadowy=5"
+            f"[slam_bg][{slam_idx}:v]overlay="
+            f"x=0:y=(H-overlay_h)/2"
             f"[slam_card]"
         )
         fp.append("[slam_card][main_content]concat=n=2:v=1:a=0[final]")
@@ -501,7 +598,13 @@ def create_video(
     if has_audio:
         slam_ms = int(SLAM_DURATION * 1000) if has_slam else 0
         slam_total = total_dur + (SLAM_DURATION if has_slam else 0)
-        af_chain = f"adelay={slam_ms}|{slam_ms},apad=pad_dur={OUTRO_DURATION}" if has_slam else f"apad=pad_dur={OUTRO_DURATION}"
+        # Audio cleanup: highpass removes low-end rumble, acompressor smooths dynamics/graining
+        audio_cleanup = "highpass=f=100,acompressor=threshold=0.05:ratio=4:attack=5:release=50"
+        af_chain = (
+            f"adelay={slam_ms}|{slam_ms},{audio_cleanup},apad=pad_dur={OUTRO_DURATION}"
+            if has_slam else
+            f"{audio_cleanup},apad=pad_dur={OUTRO_DURATION}"
+        )
         cmd += ["-map", f"{audio_idx}:a",
                 "-af", af_chain,
                 "-t", f"{slam_total:.2f}"]
@@ -532,7 +635,8 @@ def create_video(
         _cleanup(bg_local)
         return None
     finally:
-        _cleanup(bg_local)
+        if bg_local and "kling_bg_" not in bg_local:
+            _cleanup(bg_local)
 
     if result.returncode != 0:
         log.error(f"[FFmpeg] Render failed (exit {result.returncode}).")
@@ -546,12 +650,12 @@ def create_video(
     # ── 9. Upload to R2 ───────────────────────────────────────────────────────
     log.info("[FFmpeg] Uploading rendered video to R2...")
     video_url = _upload_asset(output_path)
-    _cleanup(output_path)
 
     if not video_url:
-        log.error("[FFmpeg] Video CDN upload failed.")
-        return None
+        log.warning("[FFmpeg] CDN upload failed — returning local path for direct email attachment.")
+        return output_path   # caller (deliver_tiktok_package_email) reads from disk
 
+    _cleanup(output_path)
     log.info(f"[FFmpeg] ✅ Video live at: {video_url}")
     return video_url
 

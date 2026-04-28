@@ -21,39 +21,41 @@ except ImportError:
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), '..', '..', '.tmp', 'marketing')
 
 # ── Cinematic prompt themes, grouped by market category ───────────────────────
+# Prompts are optimized for Kling v2.6 Pro: specific, cinematic, with strong motion verbs.
 THEMES_CRYPTO = [
-    "quantum computing neural nodes pulsing with electric light",
-    "deep ocean cybernetic fiber optics glowing in the dark",
-    "sleek glassmorphism data panels floating in deep space",
-    "abstract liquid mercury flowing through a dark digital void",
-    "three-dimensional blockchain data structures rotating slowly",
+    "extreme close-up of molten gold dripping into dark water, slow motion, cinematic lighting",
+    "aerial shot of glowing circuit board city at night, neon green and blue lights, slow push in",
+    "abstract silver liquid mercury flowing and morphing in slow motion, macro lens, dark studio",
+    "slow motion shot of laser beams cutting through thick dark smoke in a server room",
+    "cinematic orbit around a glowing neon-lit bitcoin symbol in deep space, slow rotation",
 ]
 THEMES_POLITICAL = [
-    "cinematic deep space with shimmering particle constellations",
-    "glowing neural pathways firing across a dark abstract brain",
-    "high-frequency trading laser grids cascading with neon data",
-    "surreal dark marble hall with glowing archways and fog",
-    "abstract monolithic columns in a dark foggy void",
+    "slow motion shot of an American flag rippling in strong wind at dusk, dramatic lighting",
+    "cinematic aerial pullback from the Capitol Building at blue hour, mist in the air",
+    "extreme slow motion chess pieces falling in sequence on a dark marble table",
+    "cinematic close-up of a spinning globe with glowing country borders, slow rotation, dark BG",
+    "slow dramatic push into a dark room with one spotlight illuminating a single decision table",
 ]
 THEMES_SPORTS = [
-    "cyberpunk city skyline reflected in a still neon-lit ocean",
-    "dark neon bioluminescence geometric network slowly shifting",
-    "cinematic slow-motion sparks raining in a dark arena",
-    "dark stadium lights dissolving into neon geometric particles",
-    "abstract kinetic energy fields colliding in deep dark space",
+    "cinematic slow motion shot of a soccer ball curling through a floodlit stadium at night",
+    "extreme slow motion of confetti falling in a packed stadium, golden light rays",
+    "dramatic slow push into an empty soccer stadium at night, floodlights blazing through fog",
+    "slow motion aerial shot of a packed World Cup stadium, crowd lights glowing in the dark",
+    "cinematic slow motion of cleats hitting wet grass in a floodlit pitch, water droplets spraying",
 ]
 THEMES_DEFAULT = [
-    "quantum computing neural nodes pulsing with electric light",
-    "sleek glassmorphism data panels floating in deep space",
-    "deep ocean cybernetic fiber optics glowing in the dark",
-    "high-frequency trading laser grids cascading with neon data",
-    "dark neon bioluminescence geometric network slowly shifting",
-    "abstract liquid mercury flowing through a dark digital void",
-    "cyberpunk city skyline reflected in a still neon-lit ocean",
-    "three-dimensional blockchain data structures rotating slowly",
-    "glowing neural pathways firing across a dark abstract brain",
-    "cinematic deep space with shimmering particle constellations",
+    "cinematic slow dolly shot through a dark luxury trading floor with glowing Bloomberg terminals",
+    "extreme close-up of a stock ticker tape unfurling in slow motion, golden numbers glowing",
+    "slow motion aerial pullback from a glowing city skyline at 3am, golden light trails",
+    "cinematic slow pan across a dark glass skyscraper reflecting city lights at night",
+    "macro close-up of hundred dollar bills raining in slow motion in a dark room, dramatic light",
+    "slow motion shot of a luxury watch ticking in extreme close-up, dark cinematic background",
+    "aerial slow push over a dark ocean at night with glowing city lights on the horizon",
+    "cinematic slow motion shot of gold bars being stacked in a vault, dramatic rim lighting",
+    "slow dramatic zoom on a glowing red stock market graph on a dark trading screen",
+    "extreme slow motion of a hand placing a chess king on a dark marble board, spotlight from above",
 ]
+
 THEMES = THEMES_DEFAULT  # legacy alias
 
 _CRYPTO_KEYWORDS    = {"btc", "eth", "bitcoin", "ethereum", "crypto", "sol", "xrp", "doge", "defi", "nft"}
@@ -81,8 +83,17 @@ VERTICAL_RATIO = "9:16"   # TikTok / Reels / Shorts format
 
 
 # ── Fallback: local grid (emergency only) ─────────────────────────────────────
+# ── Fallback: local grid (emergency only) ─────────────────────────────────────
 def _generate_fallback_grid(width: int = 1080, height: int = 1920) -> str:
-    log.warning("Generating local fallback grid (all API paths exhausted).")
+    # First, try to salvage a previously generated cinematic Kling video!
+    import glob
+    existing_bgs = glob.glob(os.path.join(OUTPUT_DIR, "kling_bg_*.mp4"))
+    if existing_bgs:
+        chosen = random.choice(existing_bgs)
+        log.warning(f"[Offline] APIs unreachable. Reusing cached cinematic background: {chosen}")
+        return chosen
+
+    log.warning("Generating local fallback grid (all API paths exhausted and no cached videos found).")
     img = Image.new('RGB', (width, height), (10, 15, 30))
     draw = ImageDraw.Draw(img)
     for i in range(0, max(width, height), 100):
@@ -237,7 +248,7 @@ def generate_background(market_hint: str = "") -> str:
       2. DALL-E 3 (static PNG fallback)
       3. Local grid (emergency fallback)
     """
-    secrets_path = os.path.join(os.path.dirname(__file__), '..', '..', 'secrets.json')
+    secrets_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'secrets.json')
     secrets = {}
     if os.path.exists(secrets_path):
         try:

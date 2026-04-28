@@ -49,58 +49,64 @@ def generate_outro() -> str | None:
         return cached
 
     width, height = 1080, 1920
-    
-    # ── Match Genuine Logo Background (13, 17, 23)
-    img = Image.new('RGB', (width, height), (13, 17, 23))
+
+    # ── Fully transparent canvas — text/logo float over the Kling background ──
+    img  = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    
+
     logo_rendered = False
-    
-    # Load the highly proprietary custom PolyVision Brand Logo
+
     try:
         logo_path = os.path.join(ASSETS_DIR, 'whale_logo.png')
         logo = Image.open(logo_path).convert("RGBA")
-        
-        # Scale the custom brand logo beautifully
-        logo.thumbnail((675, 675), Image.Resampling.LANCZOS)
+
+        # Large centered logo
+        logo.thumbnail((500, 500), Image.Resampling.LANCZOS)
         lw, lh = logo.size
-        
-        # Absolute center horizontally
         center_x = int((width - lw) / 2)
-        center_y = int((height - lh) / 2) - 120
-        
-        # Paste with transparent alpha mask identically
+        center_y = int((height - lh) / 2) - 160
         img.paste(logo, (center_x, center_y), logo)
         logo_rendered = True
-        
-        # Place the master PolyVision text block
-        font_main = _get_font(120, bold=True)
-        m_text = "PolyVision"
-        m_bbox = draw.textbbox((0, 0), m_text, font=font_main)
-        mw = m_bbox[2] - m_bbox[0]
-        
-        # Electric glow PolyVision primary text
-        draw.text(((width - mw) / 2, center_y + lh + 60), m_text, fill="#00E6F0", font=font_main)
-        
-        # Place the URL text underneath for final CTA authority
-        font_url = _get_font(60, bold=True)
-        u_text = "polyvision.app"
-        u_bbox = draw.textbbox((0, 0), u_text, font=font_url)
-        uw = u_bbox[2] - u_bbox[0]
-        draw.text(((width - uw) / 2, center_y + lh + 210), u_text, fill="#3B82F6", font=font_url)
-        
-    except Exception as e:
-        log.warning(f"Could not render absolute logo match: {e}")
-            
-    if not logo_rendered:
-        # Extreme fallback
-        font_logo = _get_font(80, bold=True)
-        ltext = "POLYVISION"
-        l_bbox = draw.textbbox((0, 0), ltext, font=font_logo)
-        draw.text(((width - (l_bbox[2]-l_bbox[0])) / 2, height / 2 - 100), ltext, fill="#00E6F0", font=font_logo)
 
-    ts = __import__('datetime').datetime.now(__import__('datetime').timezone.utc).strftime("%Y%m%d_%H%M%S")
-    output_path = os.path.join(OUTPUT_DIR, f"outro_{ts}.png")
+        # Soft blurred dark pill behind text only — no hard rectangle
+        from PIL import ImageFilter
+        halo_y  = center_y + lh + 20
+        halo_h  = 280
+        halo    = Image.new('RGBA', (width, halo_h), (0, 0, 0, 0))
+        halo_d  = ImageDraw.Draw(halo)
+        halo_d.rounded_rectangle([60, 10, width - 60, halo_h - 10], radius=50, fill=(0, 0, 0, 130))
+        halo    = halo.filter(ImageFilter.GaussianBlur(radius=22))
+        img.paste(halo, (0, halo_y), halo)
+
+        # "PolyVision" — electric cyan
+        font_main = _get_font(108, bold=True)
+        m_text    = "PolyVision"
+        m_bbox    = draw.textbbox((0, 0), m_text, font=font_main)
+        mw        = m_bbox[2] - m_bbox[0]
+        text_y    = center_y + lh + 60
+        draw.text(((width - mw) / 2 + 3, text_y + 3), m_text, fill=(0, 0, 0, 160), font=font_main)
+        draw.text(((width - mw) / 2, text_y),           m_text, fill="#00E6F0",      font=font_main)
+
+        # "polyvision.app" — smaller, brand blue
+        font_url = _get_font(54, bold=False)
+        u_text   = "polyvision.app"
+        u_bbox   = draw.textbbox((0, 0), u_text, font=font_url)
+        uw       = u_bbox[2] - u_bbox[0]
+        url_y    = text_y + 135
+        draw.text(((width - uw) / 2 + 2, url_y + 2), u_text, fill=(0, 0, 0, 140), font=font_url)
+        draw.text(((width - uw) / 2, url_y),           u_text, fill="#3B82F6",      font=font_url)
+
+    except Exception as e:
+        log.warning(f"Could not render logo outro: {e}")
+
+    if not logo_rendered:
+        font_logo = _get_font(80, bold=True)
+        ltext  = "POLYVISION"
+        l_bbox = draw.textbbox((0, 0), ltext, font=font_logo)
+        draw.text(((width - (l_bbox[2] - l_bbox[0])) / 2, height / 2 - 100), ltext, fill="#00E6F0", font=font_logo)
+
+    ts           = __import__('datetime').datetime.now(__import__('datetime').timezone.utc).strftime("%Y%m%d_%H%M%S")
+    output_path  = os.path.join(OUTPUT_DIR, f"outro_{ts}.png")
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     img.save(output_path, "PNG")
     log.info(f"Outro Graphic saved → {output_path}")

@@ -257,13 +257,19 @@ def deliver_tiktok_package_email(
         log.error("Missing RESEND_API_KEY, cannot dispatch video package.")
         return
 
-    log.info(f"[Email] Downloading final MP4 from {video_url}...")
+    log.info(f"[Email] Loading final MP4 from {video_url}...")
     try:
-        mp4_resp = requests.get(video_url, timeout=60)
-        mp4_resp.raise_for_status()
-        mp4_b64 = base64.b64encode(mp4_resp.content).decode('utf-8')
+        if os.path.exists(str(video_url)):
+            # Local path — read directly from disk (CDN upload failed but render succeeded)
+            with open(video_url, "rb") as f:
+                mp4_b64 = base64.b64encode(f.read()).decode('utf-8')
+            log.info(f"[Email] Read {os.path.getsize(video_url):,} bytes from local file.")
+        else:
+            mp4_resp = requests.get(video_url, timeout=60)
+            mp4_resp.raise_for_status()
+            mp4_b64 = base64.b64encode(mp4_resp.content).decode('utf-8')
     except Exception as e:
-        log.error(f"[Email] Failed to download MP4 from Creatomate URL: {e}")
+        log.error(f"[Email] Failed to load MP4: {e}")
         return
 
     html_content = f"""
