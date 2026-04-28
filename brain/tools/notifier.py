@@ -41,8 +41,8 @@ DISCORD_CHANNEL_ID = os.getenv("DISCORD_CHANNEL_ID", "")
 DISCORD_POLY_TIERS = [
     url_thresh for url_thresh in [
         (os.getenv("DISCORD_WEBHOOK_URL",      ""),  float(os.getenv("DISCORD_MIN_SIZE",         "500"))),
-        (os.getenv("DISCORD_WEBHOOK_50K_URL",  ""),  50_000.0),
-        (os.getenv("DISCORD_WEBHOOK_100K_URL", ""), 100_000.0),
+        (os.getenv("DISCORD_WEBHOOK_50K_URL",  "") or os.getenv("DISCORD_WHALE_WEBHOOK_URL", ""),  50_000.0),
+        (os.getenv("DISCORD_WEBHOOK_100K_URL", "") or os.getenv("DISCORD_WHALE_WEBHOOK_URL", ""), 100_000.0),
     ]
     if url_thresh[0]  # only include tiers where the webhook URL is set
 ]
@@ -212,6 +212,11 @@ def format_discord_embed(payload: dict) -> dict:
     tier    = payload.get("alert_tier", "STANDARD")
     handle  = payload.get("trader_handle", "Unknown")
     market  = payload.get("market_title", "")
+    
+    # Discord title max is 256 chars; truncate market to prevent 400 Bad Request
+    if len(market) > 200:
+        market = market[:197] + "..."
+        
     outcome = payload.get("outcome", "")
     price   = payload.get("price", 0)
     usd     = payload.get("usd_value", 0)
@@ -509,7 +514,11 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
     }
 
     # Post to each qualifying Discord channel
+    posted_urls = set()
     for i, (wh_url, threshold) in enumerate(qualifying_tiers):
+        if wh_url in posted_urls:
+            continue
+        posted_urls.add(wh_url)
         label = f"discord_{i}_${threshold:,.0f}+"
         captured_url = wh_url          # avoid closure-capture bug in lambda loop
         results[label] = send_with_retry(
