@@ -139,22 +139,30 @@ def generate_voiceover(
             else:
                 log.error(f"TTS HTTP Error: {e}")
                 if attempt == max_retries:
-                    import glob, shutil
-                    cached = glob.glob(os.path.join(OUTPUT_DIR, "voiceover_*.mp3"))
-                    if cached:
-                        log.warning("[TTS Mock] Using cached MP3 to sustain pipeline.")
-                        shutil.copy(cached[-1], output_path)
+                    log.warning("[TTS Mock] Using offline macOS synthesis to sustain pipeline.")
+                    import subprocess
+                    tmp_aiff = output_path.replace(".mp3", ".aiff")
+                    try:
+                        subprocess.run(["say", "-v", "Alex", "-o", tmp_aiff, script], check=True)
+                        subprocess.run(["ffmpeg", "-y", "-i", tmp_aiff, "-b:a", "192k", output_path], check=True, capture_output=True)
+                        if os.path.exists(tmp_aiff): os.remove(tmp_aiff)
                         return output_path
+                    except Exception:
+                        pass
                     return None
         except Exception as e:
             log.error(f"TTS generation Exception: {e}")
             if attempt == max_retries:
-                import glob, shutil
-                cached = glob.glob(os.path.join(OUTPUT_DIR, "voiceover_*.mp3"))
-                if cached:
-                    log.warning("[TTS Mock] Using cached MP3 to sustain pipeline.")
-                    shutil.copy(cached[-1], output_path)
+                log.warning("[TTS Mock] Using offline macOS synthesis to sustain pipeline.")
+                import subprocess
+                tmp_aiff = output_path.replace(".mp3", ".aiff")
+                try:
+                    subprocess.run(["say", "-v", "Alex", "-o", tmp_aiff, script], check=True)
+                    subprocess.run(["ffmpeg", "-y", "-i", tmp_aiff, "-b:a", "192k", output_path], check=True, capture_output=True)
+                    if os.path.exists(tmp_aiff): os.remove(tmp_aiff)
                     return output_path
+                except Exception:
+                    pass
                 return None
             
         if attempt < max_retries:
@@ -162,12 +170,16 @@ def generate_voiceover(
             log.info(f"⏳ Sleeping {delay}s before TTS retry...")
             time.sleep(delay)
             
-    import glob, shutil
-    cached = glob.glob(os.path.join(OUTPUT_DIR, "voiceover_*.mp3"))
-    if cached:
-        log.warning("[TTS Mock] Exhausted retries. Using cached MP3 to sustain pipeline.")
-        shutil.copy(cached[-1], output_path)
+    log.warning("[TTS Mock] Exhausted retries. Using offline macOS synthesis to sustain pipeline.")
+    import subprocess
+    tmp_aiff = output_path.replace(".mp3", ".aiff")
+    try:
+        subprocess.run(["say", "-v", "Alex", "-o", tmp_aiff, script], check=True)
+        subprocess.run(["ffmpeg", "-y", "-i", tmp_aiff, "-b:a", "192k", output_path], check=True, capture_output=True)
+        if os.path.exists(tmp_aiff): os.remove(tmp_aiff)
         return output_path
+    except Exception:
+        pass
     log.error("TTS generation failed: All retry attempts exhausted.")
     return None
 

@@ -154,6 +154,14 @@ def _render_base_image(trade: dict) -> tuple[Image.Image, dict]:
         font_bet  = _get_font(font_size, bold=True)
     draw.text(((width - bw) / 2, y_text + 60), bet_text, fill=accent_color, font=font_bet)
 
+    win_rate = trade.get("wallet_win_rate", 0)
+    if win_rate:
+        font_wr = _get_font(48, bold=True)
+        wr_text = f"Trader Historic Win Rate: {win_rate:.0%}"
+        wr_bbox = draw.textbbox((0, 0), wr_text, font=font_wr)
+        wr_w = wr_bbox[2] - wr_bbox[0]
+        draw.text(((width - wr_w) / 2, y_text + 160), wr_text, fill="#94A3B8", font=font_wr)
+
     # ── Bar background (empty shell — fill is drawn per-frame) ────────────────
     bar_y      = y_text + 240
     bar_margin = card_margin + 90
@@ -214,7 +222,7 @@ def _apply_bar_frame(base: Image.Image, layout: dict, progress: float) -> Image.
 
     # Percentage counter
     font_pct = _get_font(54, bold=True)
-    pct_text = f"{current_pct:.0f}% chance"
+    pct_text = f"{current_pct:.0f}% Market Probability"
     p_bbox   = draw.textbbox((0, 0), pct_text, font=font_pct)
     pw       = p_bbox[2] - p_bbox[0]
     draw.text(((img_width - pw) / 2, bar_y + 90), pct_text, fill="#94A3B8", font=font_pct)
