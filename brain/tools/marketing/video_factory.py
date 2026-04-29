@@ -538,7 +538,7 @@ def create_video(
     if has_logo and has_audio:
         fp.append(
             f"[{cur}][{logo_idx}:v]overlay="
-            f"x=0:y=0:"
+            f"x=(W-w)/2:y=0:"
             f"enable='between(t,{od:.2f},{total_dur:.2f})'[v3]"
         )
         cur = "v3"
@@ -551,7 +551,7 @@ def create_video(
     ff_inputs += ["-i", caption_overlay_path]
     fp.append(
         f"[{cur}][{caption_idx}:v]overlay="
-        f"x=0:y=round(H*0.135-overlay_h/2)"
+        f"x=(W-w)/2:y=round(H*0.135-overlay_h/2)"
         f"{main_enable}[v_cap]"
     )
     cur = "v_cap"
@@ -564,7 +564,7 @@ def create_video(
         ff_inputs += ["-i", brand_overlay_path]
         fp.append(
             f"[{cur}][{brand_idx}:v]overlay="
-            f"x=0:y=round(H*0.72-overlay_h/2)"
+            f"x=(W-w)/2:y=round(H*0.72-overlay_h/2)"
             f"{outro_enable}[main_content]"
         )
     else:
@@ -581,7 +581,7 @@ def create_video(
         ff_inputs += ["-i", slam_overlay_path]
         fp.append(
             f"[slam_bg][{slam_idx}:v]overlay="
-            f"x=0:y=(H-overlay_h)/2"
+            f"x=(W-w)/2:y=(H-overlay_h)/2"
             f"[slam_card]"
         )
         fp.append("[slam_card][main_content]concat=n=2:v=1:a=0[final]")
