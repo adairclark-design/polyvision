@@ -230,6 +230,7 @@ def fetch_momentum_clusters(
             COUNT(*)         >= %s
             AND SUM(t.usd_value) >= %s
             AND MAX(t.created_at) >= %s
+            AND AVG(t.price)  < 0.90
         ORDER BY total_usd DESC
         LIMIT 5;
     """
@@ -287,7 +288,7 @@ def pick_best_trade(trades: list[dict]) -> dict | None:
         return None
 
     PROB_MIN = 0.01   # Allowed floor: 1%
-    PROB_MAX = 0.80   # Hard cap: never pick trades >80% probability
+    PROB_MAX = 0.90   # Hard cap: never pick trades > 90% Market Probability (boring sure-things)
 
     valid = [
         t for t in trades
