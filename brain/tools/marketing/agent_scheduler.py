@@ -198,6 +198,15 @@ def main():
                         f"${cluster['total_usd']:,.0f} on '{cluster['market_title'][:50]}'"
                     )
                     trade_dict = _cluster_to_trade_dict(cluster)
+                    # Python-level gate: AVG(price) SQL filter can be gamed by mixed clusters.
+                    # Check the actual reported price explicitly here.
+                    if float(trade_dict.get("price", 0.5)) >= 0.90:
+                        log.info(
+                            f"[Layer 2] Skipping cluster — Market Probability "
+                            f"{float(trade_dict.get('price', 0.5)):.0%} >= 90% (boring sure-thing). "
+                            f"Market: '{cluster.get('market_title', '')[:50]}'"
+                        )
+                        continue
                     success = run_tiktok_video_for_trade(trade_dict, secrets)
                     if success:
                         _mark_market_fired(market_key, market_cooldown)

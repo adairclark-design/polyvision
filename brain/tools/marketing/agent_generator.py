@@ -339,9 +339,22 @@ def run_tiktok_video_for_trade(best: dict, secrets: dict, dry_run: bool = False)
       4. New Creatomate render with PolyVision logo (NO BACKGROUND MUSIC)
       5. Directly email MP4 payload to User via Resend.
     """
+    # ── Universal Market Probability gate ─────────────────────────────────────
+    # Trades at 90%+ are near-certainties — not compelling content.
+    # This gate is the FINAL backstop regardless of which scheduler layer called us.
+    market_prob = float(best.get("price", 0.5))
+    if market_prob >= 0.90:
+        log.warning(
+            f"[VideoGate] BLOCKED — Market Probability {market_prob:.0%} >= 90% "
+            f"on '{best.get('market_title', '')[:60]}'. No video generated."
+        )
+        return False
+    # ──────────────────────────────────────────────────────────────────────────
+
     brain = _read_brain()
     topic = best.get("market_title", "General")
     trade_ctx = format_trade_for_llm(best)
+
     
     # Phase 2: Telemetry Injection Matrix
     db_url = _get_db_url()
