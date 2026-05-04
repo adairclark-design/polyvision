@@ -61,9 +61,39 @@ THEMES = THEMES_DEFAULT  # legacy alias
 _CRYPTO_KEYWORDS    = {"btc", "eth", "bitcoin", "ethereum", "crypto", "sol", "xrp", "doge", "defi", "nft"}
 _POLITICAL_KEYWORDS = {"trump", "election", "president", "senate", "congress", "fed", "rate", "policy",
                        "vote", "democrat", "republican", "white house", "supreme", "tariff", "nato"}
-_SPORTS_KEYWORDS    = {"nfl", "nba", "mlb", "nhl", "soccer", "fifa", "ufc", "mma", "tennis", "golf",
-                       "dota", "lol", "esport", "game", "match", "winner", "celtics", "lakers",
-                       "team liquid", "super bowl", "world cup", "playoff", "championship"}
+_SPORTS_KEYWORDS    = {
+    # ── Generic sports terms ──────────────────────────────────────────────────
+    "win", "winner", "wins", "champion", "championship", "final", "semifinal",
+    "quarter-final", "quarterfinal", "playoff", "playoffs", "title", "trophy",
+    "match", "game", "series", "round", "tournament", "league", "cup",
+    "score", "advance", "beat", "defeat", "qualify", "relegat",
+    # ── American major leagues ────────────────────────────────────────────────
+    "nfl", "nba", "mlb", "nhl", "ncaa", "mls",
+    "super bowl", "world series", "stanley cup", "nba finals",
+    # ── Soccer / Football (global) ────────────────────────────────────────────
+    "soccer", "football", "fifa", "premier league", "la liga", "serie a",
+    "ligue 1", "bundesliga", "champions league", "europa league",
+    "conference league", "ucl", "uel", "uecl", "eredivisie",
+    "world cup", "euros", "euro 2024", "euro 2026", "copa america",
+    "fa cup", "carabao cup", "dfb pokal",
+    # ── Soccer clubs (common Polymarket markets) ──────────────────────────────
+    "man city", "manchester city", "manchester united", "man utd",
+    "liverpool", "arsenal", "chelsea", "tottenham", "spurs", "newcastle",
+    "aston villa", "everton", "brighton", "west ham", "brentford",
+    "real madrid", "barcelona", "atletico", "sevilla", "villarreal",
+    "psg", "paris saint-germain", "marseille", "monaco", "lyon", "lille",
+    "inter milan", "ac milan", "juventus", "napoli", "roma", "lazio",
+    "bayern", "dortmund", "bvb", "rb leipzig", "leverkusen",
+    "ajax", "psv", "feyenoord", "celtic", "rangers", "porto", "benfica",
+    "sporting", "galatasaray", "fenerbahce", "besiktas",
+    # ── Combat sports ─────────────────────────────────────────────────────────
+    "ufc", "mma", "boxing", "wba", "wbc", "ibf",
+    # ── Other sports ──────────────────────────────────────────────────────────
+    "tennis", "golf", "pga", "masters", "wimbledon", "us open", "french open",
+    "nascar", "f1", "formula 1", "formula one",
+    "dota", "lol", "esport", "esports", "cs2",
+    "olympics", "olympic",
+}
 
 
 def _pick_theme(market_hint: str = "") -> str:

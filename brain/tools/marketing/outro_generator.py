@@ -60,41 +60,52 @@ def generate_outro() -> str | None:
         logo_path = os.path.join(ASSETS_DIR, 'whale_logo.png')
         logo = Image.open(logo_path).convert("RGBA")
 
-        # Large centered logo
+        # Large centered logo — grouped with text below as a single centered unit
         logo.thumbnail((500, 500), Image.Resampling.LANCZOS)
         lw, lh = logo.size
+
+        # Measure text heights before laying out so we can center the whole group
+        font_main = _get_font(108, bold=True)
+        font_url  = _get_font(54,  bold=False)
+        m_bbox = draw.textbbox((0, 0), "PolyVision",     font=font_main)
+        u_bbox = draw.textbbox((0, 0), "polyvision.app", font=font_url)
+        mh = m_bbox[3] - m_bbox[1]
+        uh = u_bbox[3] - u_bbox[1]
+
+        # Total group: logo + 60px gap + PolyVision + 30px gap + polyvision.app
+        group_h  = lh + 60 + mh + 30 + uh
+        group_y0 = int((height - group_h) / 2)   # true vertical center
+
+        # Logo
         center_x = int((width - lw) / 2)
-        center_y = int((height - lh) / 2) - 160
+        center_y = group_y0
         img.paste(logo, (center_x, center_y), logo)
         logo_rendered = True
 
-        # Soft blurred dark pill behind text only — no hard rectangle
+        # Soft blurred dark halo behind text only
         from PIL import ImageFilter
-        halo_y  = center_y + lh + 20
-        halo_h  = 280
-        halo    = Image.new('RGBA', (width, halo_h), (0, 0, 0, 0))
-        halo_d  = ImageDraw.Draw(halo)
+        halo_y = center_y + lh + 20
+        halo_h = 280
+        halo   = Image.new('RGBA', (width, halo_h), (0, 0, 0, 0))
+        halo_d = ImageDraw.Draw(halo)
         halo_d.rounded_rectangle([60, 10, width - 60, halo_h - 10], radius=50, fill=(0, 0, 0, 130))
-        halo    = halo.filter(ImageFilter.GaussianBlur(radius=22))
+        halo   = halo.filter(ImageFilter.GaussianBlur(radius=22))
         img.paste(halo, (0, halo_y), halo)
 
         # "PolyVision" — electric cyan
-        font_main = _get_font(108, bold=True)
-        m_text    = "PolyVision"
-        m_bbox    = draw.textbbox((0, 0), m_text, font=font_main)
-        mw        = m_bbox[2] - m_bbox[0]
-        text_y    = center_y + lh + 60
+        m_text = "PolyVision"
+        mw     = m_bbox[2] - m_bbox[0]
+        text_y = group_y0 + lh + 60
         draw.text(((width - mw) / 2 + 3, text_y + 3), m_text, fill=(0, 0, 0, 160), font=font_main)
-        draw.text(((width - mw) / 2, text_y),           m_text, fill="#00E6F0",      font=font_main)
+        draw.text(((width - mw) / 2,     text_y),     m_text, fill="#00E6F0",       font=font_main)
 
         # "polyvision.app" — smaller, brand blue
-        font_url = _get_font(54, bold=False)
-        u_text   = "polyvision.app"
-        u_bbox   = draw.textbbox((0, 0), u_text, font=font_url)
-        uw       = u_bbox[2] - u_bbox[0]
-        url_y    = text_y + 135
+        u_text = "polyvision.app"
+        uw     = u_bbox[2] - u_bbox[0]
+        url_y  = text_y + mh + 30
         draw.text(((width - uw) / 2 + 2, url_y + 2), u_text, fill=(0, 0, 0, 140), font=font_url)
-        draw.text(((width - uw) / 2, url_y),           u_text, fill="#3B82F6",      font=font_url)
+        draw.text(((width - uw) / 2,     url_y),     u_text, fill="#3B82F6",       font=font_url)
+
 
     except Exception as e:
         log.warning(f"Could not render logo outro: {e}")
