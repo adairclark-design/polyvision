@@ -29,12 +29,17 @@ ANIM_FRAMES = 30
 # ── Font helpers ──────────────────────────────────────────────────────────────
 
 def _get_font(size: int, bold=False):
-    """Load a system font — checks Linux (Railway) paths first, then Mac fallbacks."""
+    """Load a system font — checks bundled premium fonts first, then system fallbacks."""
     weight = "Bold" if bold else "Regular"
     candidates = [
+        # Premium fonts bundled via Dockerfile (Railway)
+        "/usr/local/share/fonts/Inter-Bold.ttf"        if bold else "/usr/local/share/fonts/Inter-Bold.ttf",
+        "/usr/local/share/fonts/Montserrat-Bold.ttf"   if bold else "/usr/local/share/fonts/Montserrat-Bold.ttf",
+        # System font fallbacks (Linux / Railway default)
         f"/usr/share/fonts/truetype/liberation/LiberationSans-{weight}.ttf",
         f"/usr/share/fonts/truetype/liberation2/LiberationSans-{weight}.ttf",
         f"/usr/share/fonts/truetype/dejavu/DejaVuSans-{weight}.ttf",
+        # Mac local dev fallbacks
         f"/System/Library/Fonts/Supplemental/Arial {weight}.ttf",
         "/System/Library/Fonts/Helvetica.ttc",
     ]
@@ -155,12 +160,35 @@ def _render_base_image(trade: dict) -> tuple[Image.Image, dict]:
     draw.text(((width - bw) / 2, y_text + 60), bet_text, fill=accent_color, font=font_bet)
 
     win_rate = trade.get("wallet_win_rate", 0)
+    font_wr  = _get_font(48, bold=True)
     if win_rate:
-        font_wr = _get_font(48, bold=True)
-        wr_text = f"Trader Historic Win Rate: {win_rate:.0%}"
-        wr_bbox = draw.textbbox((0, 0), wr_text, font=font_wr)
-        wr_w = wr_bbox[2] - wr_bbox[0]
-        draw.text(((width - wr_w) / 2, y_text + 160), wr_text, fill="#94A3B8", font=font_wr)
+        wr_text  = f"Trader Historic Win Rate: {win_rate:.0%}"
+        wr_color = "#94A3B8"
+    else:
+        wr_text  = "Win Rate: Tracking..."
+        wr_color = "#475569"   # dimmer slate — honest placeholder
+    wr_bbox = draw.textbbox((0, 0), wr_text, font=font_wr)
+    wr_w    = wr_bbox[2] - wr_bbox[0]
+    draw.text(((width - wr_w) / 2, y_text + 160), wr_text, fill=wr_color, font=font_wr)
+
+    # ── Contrarian signal badge (P4) — shown when whale backs a sub-40% outcome ──
+    # e.g. betting 'No' at 18% market price = whale disagrees with 82% consensus.
+    # This is the core PolyVision story: smart money going against the crowd.
+    if pct < 40:
+        font_con = _get_font(44, bold=True)
+        con_text = "⚡ CONTRARIAN SIGNAL"
+        con_bbox = draw.textbbox((0, 0), con_text, font=font_con)
+        con_w    = con_bbox[2] - con_bbox[0]
+        con_h    = con_bbox[3] - con_bbox[1]
+        con_x    = int((width - con_w) / 2)
+        con_y    = int(card_top - con_h - 28)
+        pill_pad = 16
+        draw.rounded_rectangle(
+            [con_x - pill_pad, con_y - pill_pad // 2,
+             con_x + con_w + pill_pad, con_y + con_h + pill_pad // 2],
+            radius=20, fill=(245, 158, 11, 200)   # amber pill
+        )
+        draw.text((con_x, con_y), con_text, fill="#0B101A", font=font_con)
 
     # ── Bar background (empty shell — fill is drawn per-frame) ────────────────
     bar_y      = y_text + 240

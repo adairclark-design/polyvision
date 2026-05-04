@@ -20,12 +20,21 @@ ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'assets')
 _outro_cache: dict[str, str] = {}  # {"YYYY-MM-DD": "/path/to/outro.png"}
 
 def _get_font(size: int, bold=False):
-    try:
-        weight = "Bold" if bold else "Regular"
-        path = f"/System/Library/Fonts/Supplemental/Arial {weight}.ttf"
-        return ImageFont.truetype(path, size)
-    except:
-        return ImageFont.load_default()
+    weight = "Bold" if bold else "Regular"
+    candidates = [
+        "/usr/local/share/fonts/Inter-Bold.ttf"      if bold else "/usr/local/share/fonts/Inter-Bold.ttf",
+        "/usr/local/share/fonts/Montserrat-Bold.ttf" if bold else "/usr/local/share/fonts/Montserrat-Bold.ttf",
+        f"/usr/share/fonts/truetype/liberation/LiberationSans-{weight}.ttf",
+        f"/usr/share/fonts/truetype/dejavu/DejaVuSans-{weight}.ttf",
+        f"/System/Library/Fonts/Supplemental/Arial {weight}.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+    ]
+    for path in candidates:
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
 
 def _draw_gradient(img, color_top, color_bottom):
     draw = ImageDraw.Draw(img)
