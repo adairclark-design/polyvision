@@ -71,6 +71,12 @@ HASHTAG RULES:
   ❌ Never use: #sportsbetting #gambling #bet #odds or any gambling-adjacent hashtags
   ❌ Never use the same hashtag set two generations in a row (rotation is enforced externally).
 
+TRADER NAME RULE (NON-NEGOTIABLE):
+  ❌ NEVER mention the trader's name, handle, pseudonym, or wallet address in the script_text or any output field.
+  The viewer does not know or care who the trader is. Naming them sounds amateurish and some handles are
+  unpronounceable or embarrassing when read aloud (e.g. 'VPenguin', '0xAb3f...').
+  ✅ Instead use: "a smart money player", "an institutional signal", "a large position", "smart money".
+
 --- SCRIPT CADENCE (Voiceover Delivery Engineering) ---
 CRITICAL: The `script_text` you write is fed directly into an AI Text-To-Speech engine. The engine reads
 punctuation literally to control its own emotional delivery. You are NOT writing prose — you are
@@ -156,8 +162,13 @@ def generate_social_copy(
     selected_hashtag_pool = _random.choice(HASHTAG_POOLS)
     log.info(f"[Copywriter] Hashtag pool selected: {selected_hashtag_pool[:60]}...")
 
+    # Strip trader identity fields — LLM must not mention names/handles in the script
+    safe_trade_data = {k: v for k, v in trade_data.items()
+                       if k not in ("trader_handle", "trader_name", "trader_pseudonym",
+                                    "wallet_address", "maker_address", "taker_address")}
+
     payload = {
-        "trade_data":       trade_data,
+        "trade_data":       safe_trade_data,
         "market_data":      market_data or {},
         "mode_instruction": mode_instruction,
         "rl_context":       rl_context or "(No RL context — first-run mode)",

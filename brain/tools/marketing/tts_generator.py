@@ -117,11 +117,20 @@ def generate_voiceover(
                     "Content-Type":  "application/json",
                 },
                 json={
-                    "model": "tts-1-hd",     # HD model: better naturalness on numbers/names
+                    "model": "gpt-4o-mini-tts",   # Supports 'instructions' field — far more expressive than tts-1-hd
                     "input": _expand_numbers(script),   # Safety: expand $36K → 'thirty-six thousand dollars'
                     "voice": voice,
                     "response_format": "mp3",
-                    "speed": 1.05,   # Accelerated to 1.05x enforcing the Brand Guidelines' urgent authority cadence
+                    "speed": 1.05,   # Slightly accelerated for urgent, punchy cadence
+                    "instructions": (
+                        "You are a fired-up sports commentator delivering a breaking financial news alert. "
+                        "Your delivery must be HIGH ENERGY and URGENT — like you just saw something unbelievable. "
+                        "Hit ALL CAPS words with heavy vocal stress and genuine excitement. "
+                        "Treat '...' as a dramatic pause — breathe and let the silence land before continuing. "
+                        "Treat '—' as a sharp tonal drop followed by a punchy emphasis. "
+                        "Keep the pace fast and driven, but always let the dollar amount breathe. "
+                        "Sound like you genuinely can't believe what you're seeing. Not robotic. Not flat. ALIVE."
+                    ),
                 },
                 timeout=30,
             )

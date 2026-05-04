@@ -443,7 +443,7 @@ def create_video(
     )
     brand_overlay_path = _render_text_overlay(
         text="polyvision.app", canvas_w=W, canvas_h=H,
-        font_size=64, text_color=(16, 185, 129, 255),
+        font_size=88, text_color=(16, 185, 129, 255),
     )
     slam_overlay_path = None
     if amount_str:
@@ -538,7 +538,7 @@ def create_video(
     if has_logo and has_audio:
         fp.append(
             f"[{cur}][{logo_idx}:v]overlay="
-            f"x=(W-w)/2:y=0:"
+            f"x=(W-w)/2:y=(H-h)/2:"
             f"enable='between(t,{od:.2f},{total_dur:.2f})'[v3]"
         )
         cur = "v3"
