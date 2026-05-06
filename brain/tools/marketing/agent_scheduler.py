@@ -29,6 +29,7 @@ import time
 import json
 import logging
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo   # stdlib Python 3.9+ — handles EDT/EST automatically
 
 # ── Path ──────────────────────────────────────────────────────────────────────
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -155,7 +156,11 @@ def main():
             today = _today_str()
             videos_today = video_count_by_day.get(today, 0)
             now_utc      = datetime.now(timezone.utc)
-            now_hour_est = (now_utc - timedelta(hours=5)).hour  # rough EST offset
+            # Use proper America/New_York zone — handles EDT (UTC-4) vs EST (UTC-5) automatically.
+            # The previous hardcoded UTC-5 offset caused peak hours to be miscalculated by 1h
+            # during daylight saving time (March–November), silently skipping evening trades.
+            _eastern     = ZoneInfo("America/New_York")
+            now_hour_est = datetime.now(_eastern).hour   # actual ET hour, DST-correct
 
             # ── Nightly Reflection (midnight EST, once per day) ──────────────────
             if now_hour_est == 0 and today not in reflection_fired_today:
