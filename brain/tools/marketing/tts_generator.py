@@ -107,89 +107,75 @@ def generate_voiceover(
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
     import time
-    max_retries = 3
-    for attempt in range(1, max_retries + 1):
-        try:
-            resp = requests.post(
-                "https://api.openai.com/v1/audio/speech",
-                headers={
-                    "Authorization": f"Bearer {OPENAI_API_KEY}",
-                    "Content-Type":  "application/json",
-                },
-                json={
-                    "model": "gpt-4o-mini-tts",   # Supports 'instructions' field — far more expressive than tts-1-hd
-                    "input": _expand_numbers(script),   # Safety: expand $36K → 'thirty-six thousand dollars'
-                    "voice": voice,
+
+    def _call_tts_api(model: str, payload_extra: dict) -> str | None:
+        """Make one TTS API call. Returns output_path on success, None on failure."""
+        for attempt in range(1, 4):
+            try:
+                payload = {
+                    "model":           model,
+                    "input":           _expand_numbers(script),
+                    "voice":           voice,
                     "response_format": "mp3",
-                    "speed": 1.05,   # Slightly accelerated for urgent, punchy cadence
-                    "instructions": (
-                        "You are a fired-up sports commentator delivering a breaking financial news alert. "
-                        "Your delivery must be HIGH ENERGY and URGENT — like you just saw something unbelievable. "
-                        "Hit ALL CAPS words with heavy vocal stress and genuine excitement. "
-                        "Treat '...' as a dramatic pause — breathe and let the silence land before continuing. "
-                        "Treat '—' as a sharp tonal drop followed by a punchy emphasis. "
-                        "Keep the pace fast and driven, but always let the dollar amount breathe. "
-                        "Sound like you genuinely can't believe what you're seeing. Not robotic. Not flat. ALIVE."
-                    ),
-                },
-                timeout=30,
-            )
-            resp.raise_for_status()
+                    **payload_extra,
+                }
+                resp = requests.post(
+                    "https://api.openai.com/v1/audio/speech",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
+                             "Content-Type":  "application/json"},
+                    json=payload,
+                    timeout=40,
+                )
+                resp.raise_for_status()
+                with open(output_path, "wb") as f:
+                    f.write(resp.content)
+                log.info(f"[TTS:{model}] Voiceover saved → {output_path} ({len(resp.content):,} bytes)")
+                return output_path
 
-            with open(output_path, "wb") as f:
-                f.write(resp.content)
+            except requests.exceptions.HTTPError as e:
+                status = getattr(resp, "status_code", "?")
+                log.error(f"[TTS:{model}] HTTP {status} on attempt {attempt}/3: {e}")
+                if status == 429 and attempt < 3:
+                    time.sleep(2 ** attempt)
+                    continue
+                return None   # non-429 errors are not retryable
+            except Exception as e:
+                log.error(f"[TTS:{model}] Exception on attempt {attempt}/3: {e}")
+                if attempt < 3:
+                    time.sleep(2 ** attempt)
+        return None
 
-            log.info(f"Voiceover saved → {output_path} ({len(resp.content):,} bytes)")
-            return output_path
+    # ── Primary: gpt-4o-mini-tts with expressive instructions ─────────────────
+    # NOTE: gpt-4o-mini-tts does NOT support the 'speed' parameter.
+    # Pacing is controlled entirely via the 'instructions' field.
+    result = _call_tts_api(
+        model="gpt-4o-mini-tts",
+        payload_extra={
+            "instructions": (
+                "You are a fired-up sports commentator delivering a breaking financial news alert. "
+                "Your delivery must be HIGH ENERGY and URGENT — like you just saw something unbelievable. "
+                "Hit ALL CAPS words with heavy vocal stress and genuine excitement. "
+                "Treat '...' as a dramatic pause — breathe and let the silence land before continuing. "
+                "Treat '—' as a sharp tonal drop followed by a punchy emphasis. "
+                "Keep the pace fast and driven, but always let the dollar amount breathe. "
+                "Sound like you genuinely can't believe what you're seeing. Not robotic. Not flat. ALIVE."
+            ),
+        },
+    )
+    if result:
+        return result
 
-        except requests.exceptions.HTTPError as e:
-            if resp.status_code == 429:
-                log.warning(f"TTS generation HTTP 429 Rate Limit. (Attempt {attempt}/{max_retries})")
-            else:
-                log.error(f"TTS HTTP Error: {e}")
-                if attempt == max_retries:
-                    log.warning("[TTS Mock] Using offline macOS synthesis to sustain pipeline.")
-                    import subprocess
-                    tmp_aiff = output_path.replace(".mp3", ".aiff")
-                    try:
-                        subprocess.run(["say", "-v", "Alex", "-o", tmp_aiff, script], check=True)
-                        subprocess.run(["ffmpeg", "-y", "-i", tmp_aiff, "-b:a", "192k", output_path], check=True, capture_output=True)
-                        if os.path.exists(tmp_aiff): os.remove(tmp_aiff)
-                        return output_path
-                    except Exception:
-                        pass
-                    return None
-        except Exception as e:
-            log.error(f"TTS generation Exception: {e}")
-            if attempt == max_retries:
-                log.warning("[TTS Mock] Using offline macOS synthesis to sustain pipeline.")
-                import subprocess
-                tmp_aiff = output_path.replace(".mp3", ".aiff")
-                try:
-                    subprocess.run(["say", "-v", "Alex", "-o", tmp_aiff, script], check=True)
-                    subprocess.run(["ffmpeg", "-y", "-i", tmp_aiff, "-b:a", "192k", output_path], check=True, capture_output=True)
-                    if os.path.exists(tmp_aiff): os.remove(tmp_aiff)
-                    return output_path
-                except Exception:
-                    pass
-                return None
-            
-        if attempt < max_retries:
-            delay = 2 ** attempt
-            log.info(f"⏳ Sleeping {delay}s before TTS retry...")
-            time.sleep(delay)
-            
-    log.warning("[TTS Mock] Exhausted retries. Using offline macOS synthesis to sustain pipeline.")
-    import subprocess
-    tmp_aiff = output_path.replace(".mp3", ".aiff")
-    try:
-        subprocess.run(["say", "-v", "Alex", "-o", tmp_aiff, script], check=True)
-        subprocess.run(["ffmpeg", "-y", "-i", tmp_aiff, "-b:a", "192k", output_path], check=True, capture_output=True)
-        if os.path.exists(tmp_aiff): os.remove(tmp_aiff)
-        return output_path
-    except Exception:
-        pass
-    log.error("TTS generation failed: All retry attempts exhausted.")
+    # ── Fallback: tts-1-hd (supports 'speed', no 'instructions') ─────────────
+    # Triggered when gpt-4o-mini-tts is unavailable or returns a non-retryable error.
+    log.warning("[TTS] gpt-4o-mini-tts failed — falling back to tts-1-hd at 1.1x speed.")
+    result = _call_tts_api(
+        model="tts-1-hd",
+        payload_extra={"speed": 1.1},
+    )
+    if result:
+        return result
+
+    log.error("[TTS] Both TTS models failed. No audio will be generated.")
     return None
 
 

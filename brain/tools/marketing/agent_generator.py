@@ -442,9 +442,11 @@ def run_tiktok_video_for_trade(best: dict, secrets: dict, dry_run: bool = False)
     log.info("[TikTok] Generating voiceover...")
     audio_path = generate_voiceover(voiceover_script)
     if not audio_path:
-        log.warning("[TikTok] TTS failed (likely 429 rate limit) — continuing with silent video.")
-        # FFmpeg handles audio_path=None gracefully with a 30s silent render.
-        # A silent video is better than no video at all.
+        log.error(
+            "[TikTok] TTS failed on both gpt-4o-mini-tts and tts-1-hd. "
+            "Aborting — a silent video with no logo is worse than no video."
+        )
+        return False
 
     # Step 4: Generate Graphic Backend Matrix
     market_title = best.get("market_title", "")
