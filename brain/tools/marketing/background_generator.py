@@ -30,11 +30,11 @@ THEMES_CRYPTO = [
     "cinematic orbit around a glowing neon-lit bitcoin symbol in deep space, slow rotation",
 ]
 THEMES_POLITICAL = [
-    "slow motion shot of an American flag rippling in strong wind at dusk, dramatic lighting",
-    "cinematic aerial pullback from the Capitol Building at blue hour, mist in the air",
-    "extreme slow motion chess pieces falling in sequence on a dark marble table",
+    "slow motion shot of a dramatic dark storm cloud rolling across a vast open landscape, cinematic",
+    "extreme slow motion of chess pieces falling in sequence on a dark marble table, spotlight",
     "cinematic close-up of a spinning globe with glowing country borders, slow rotation, dark BG",
-    "slow dramatic push into a dark room with one spotlight illuminating a single decision table",
+    "slow dramatic push into a dark room with one spotlight illuminating a single chess board",
+    "aerial slow pull back from a dark mountainous landscape at dusk, dramatic storm clouds forming",
 ]
 THEMES_SPORTS = [
     "cinematic slow motion shot of a soccer ball curling through a floodlit stadium at night",
@@ -215,15 +215,21 @@ def _generate_dalle_background(theme: str, api_key: str) -> str | None:
         "Absolutely no text, no letters."
     )
 
+    # DALL-E 3 safe neutral fallback prompt (used when themed prompt is content-filtered)
+    NEUTRAL_PROMPT = (
+        "A breathtaking abstract cinematic background. Deep dark navy blues and electric cyan "
+        "glowing light trails moving in slow motion. Extremely premium, modern, no text, no people."
+    )
+
     log.info(f"[DALL-E 3] Requesting static background: '{theme}'")
     import time
-    max_retries = 3
-    for attempt in range(1, max_retries + 1):
+    for attempt in range(1, 4):
+        use_prompt = prompt if attempt < 3 else NEUTRAL_PROMPT  # last attempt always uses safe neutral
         try:
             client = OpenAI(api_key=api_key)
             response = client.images.generate(
                 model="dall-e-3",
-                prompt=prompt,
+                prompt=use_prompt,
                 size="1024x1792",
                 quality="hd",
                 n=1,
@@ -248,19 +254,23 @@ def _generate_dalle_background(theme: str, api_key: str) -> str | None:
             return out_path
 
         except Exception as e:
-            if "429" in str(e):
-                log.warning(f"[DALL-E 3] HTTP 429 Rate Limit. (Attempt {attempt}/{max_retries})")
+            err_str = str(e)
+            if "429" in err_str or "rate_limit" in err_str.lower():
+                log.warning(f"[DALL-E 3] HTTP 429 Rate Limit. (Attempt {attempt}/3)")
+                time.sleep(2 ** attempt)
+            elif any(kw in err_str.lower() for kw in ("content_policy", "safety", "rejected", "content filter")):
+                # Content filter hit — retrying the same prompt will fail identically.
+                # Switch to neutral prompt on next attempt instead of wasting retries.
+                log.warning(f"[DALL-E 3] Content policy rejection on attempt {attempt}/3 — switching to neutral prompt.")
+                prompt = NEUTRAL_PROMPT  # override for remaining attempts
             else:
-                log.error(f"[DALL-E 3] Generation Exception: {e}")
+                log.error(f"[DALL-E 3] Generation Exception on attempt {attempt}/3: {e}")
+                if attempt == 3:
+                    log.error("[DALL-E 3] Generation failed: All retry attempts exhausted.")
+                    return None
+                time.sleep(2 ** attempt)
 
-            if attempt == max_retries:
-                log.error("[DALL-E 3] Generation failed: All retry attempts exhausted.")
-                return None
-
-            delay = 2 ** attempt
-            log.info(f"⏳ Sleeping {delay}s before DALL-E 3 retry...")
-            time.sleep(delay)
-            
+    log.error("[DALL-E 3] Generation failed: All retry attempts exhausted.")
     return None
 
 
