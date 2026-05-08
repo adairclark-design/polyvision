@@ -136,13 +136,19 @@ def generate_voiceover(
                 status = getattr(resp, "status_code", "?")
                 log.error(f"[TTS:{model}] HTTP {status} on attempt {attempt}/3: {e}")
                 if status == 429 and attempt < 3:
-                    time.sleep(2 ** attempt)
+                    # Use longer fixed delays — OpenAI RPM windows reset over 60s.
+                    # 2^attempt (2s, 4s) is far too short to clear the rate limit.
+                    backoff = 15 * attempt  # 15s after attempt 1, 30s after attempt 2
+                    log.warning(f"[TTS:{model}] Rate-limited. Waiting {backoff}s before retry...")
+                    time.sleep(backoff)
                     continue
-                return None   # non-429 errors are not retryable
+                return None   # non-429 errors or final attempt — bail
             except Exception as e:
                 log.error(f"[TTS:{model}] Exception on attempt {attempt}/3: {e}")
                 if attempt < 3:
-                    time.sleep(2 ** attempt)
+                    backoff = 15 * attempt
+                    log.warning(f"[TTS:{model}] Retrying in {backoff}s...")
+                    time.sleep(backoff)
         return None
 
     # ── Primary: gpt-4o-mini-tts with expressive instructions ─────────────────
@@ -167,7 +173,10 @@ def generate_voiceover(
 
     # ── Fallback: tts-1-hd (supports 'speed', no 'instructions') ─────────────
     # Triggered when gpt-4o-mini-tts is unavailable or returns a non-retryable error.
-    log.warning("[TTS] gpt-4o-mini-tts failed — falling back to tts-1-hd at 1.1x speed.")
+    # Wait 20s before hitting the fallback — same API key, same rate limit pool.
+    log.warning("[TTS] gpt-4o-mini-tts failed — waiting 20s before tts-1-hd fallback...")
+    time.sleep(20)
+    log.warning("[TTS] Attempting tts-1-hd at 1.1x speed.")
     result = _call_tts_api(
         model="tts-1-hd",
         payload_extra={"speed": 1.1},
