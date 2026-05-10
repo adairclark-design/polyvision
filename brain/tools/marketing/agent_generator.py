@@ -441,6 +441,13 @@ def run_tiktok_video_for_trade(best: dict, secrets: dict, dry_run: bool = False)
     # Step 3: Generate FRESH voiceover
     log.info("[TikTok] Generating voiceover...")
     audio_path = generate_voiceover(voiceover_script)
+    # Guard: a returned path may be stale/empty from a previous failed run.
+    # Validate the file is >1 KB before treating it as a successful TTS.
+    if audio_path and os.path.exists(audio_path):
+        _sz = os.path.getsize(audio_path)
+        if _sz < 1024:
+            log.warning(f"[TikTok] TTS returned a corrupt/empty file ({_sz} bytes) — treating as failure.")
+            audio_path = None
     if not audio_path:
         log.error(
             "[TikTok] TTS failed on both gpt-4o-mini-tts and tts-1-hd. "

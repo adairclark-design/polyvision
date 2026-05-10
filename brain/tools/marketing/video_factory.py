@@ -431,6 +431,13 @@ def create_video(
 
     has_chart       = bool(chart_image_path and os.path.exists(str(chart_image_path)))
     chart_is_animated = has_chart and os.path.isdir(str(chart_image_path))
+    # Validate audio file exists AND is non-empty (>1 KB).
+    # A zero-byte or partial file from a failed TTS run would pass os.path.exists
+    # but produce a silent video. Guard against that here.
+    _audio_size = os.path.getsize(str(audio_path)) if (audio_path and os.path.exists(str(audio_path))) else 0
+    if audio_path and _audio_size < 1024:
+        log.warning(f"[FFmpeg] Audio file invalid or empty ({_audio_size} bytes) — treating as no audio: {audio_path}")
+        audio_path = None
     has_audio       = bool(audio_path and os.path.exists(str(audio_path)))
     has_logo        = bool(logo_path and os.path.exists(str(logo_path)))
 
