@@ -440,17 +440,23 @@ def create_video(
         log.warning(f"[FFmpeg] Audio file too small ({_audio_size} bytes) — treating as no audio: {audio_path}")
         audio_path = None
     elif audio_path and os.path.exists(str(audio_path)):
-        # Deep validation: confirm FFprobe can decode at least 1 audio stream
+        # Deep validation: confirm FFprobe can read a non-zero duration.
+        # NOTE: codec_type probe is unreliable for MP3 (container-less format) on some
+        # ffprobe builds — it returns empty stdout, false-failing valid audio files.
+        # Duration probe (-show_entries format=duration) is format-agnostic and robust.
         try:
             _probe = subprocess.run(
-                ["ffprobe", "-v", "error", "-select_streams", "a:0",
-                 "-show_entries", "stream=codec_type",
+                ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
                  "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
                 capture_output=True, text=True, timeout=10,
             )
-            if "audio" not in _probe.stdout:
-                log.warning(f"[FFmpeg] FFprobe found no audio stream in file — treating as no audio: {audio_path}")
+            _dur_str = _probe.stdout.strip()
+            _dur_val = float(_dur_str) if _dur_str else 0.0
+            if _dur_val <= 0.0:
+                log.warning(f"[FFmpeg] FFprobe reported 0s duration — treating as no audio: {audio_path}")
                 audio_path = None
+            else:
+                log.info(f"[FFmpeg] Audio validated via FFprobe: {_dur_val:.1f}s — {audio_path}")
         except Exception as _pe:
             log.warning(f"[FFmpeg] FFprobe audio validation failed ({_pe}) — treating as no audio.")
             audio_path = None
