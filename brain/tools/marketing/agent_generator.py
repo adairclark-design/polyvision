@@ -438,9 +438,15 @@ def run_tiktok_video_for_trade(best: dict, secrets: dict, dry_run: bool = False)
         log.error("Graphic generation failed.")
         return False
 
-    # Step 3: Generate FRESH voiceover
+    # Step 3: Generate FRESH voiceover — force a new timestamped path every call
+    # so a stale valid MP3 from a prior cycle can never be silently reused.
+    from datetime import datetime as _dt_now
+    _tts_ts = _dt_now.now().strftime("%Y%m%d_%H%M%S_%f")
+    _tts_dir = os.path.join(THIS_DIR, '..', '..', '.tmp', 'marketing')
+    os.makedirs(_tts_dir, exist_ok=True)
+    _fresh_audio_path = os.path.join(_tts_dir, f"voiceover_{_tts_ts}.mp3")
     log.info("[TikTok] Generating voiceover...")
-    audio_path = generate_voiceover(voiceover_script)
+    audio_path = generate_voiceover(voiceover_script, output_path=_fresh_audio_path)
     # Guard: a returned path may be stale/empty from a previous failed run.
     # Validate the file is >1 KB before treating it as a successful TTS.
     if audio_path and os.path.exists(audio_path):

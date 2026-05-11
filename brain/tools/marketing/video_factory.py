@@ -431,13 +431,29 @@ def create_video(
 
     has_chart       = bool(chart_image_path and os.path.exists(str(chart_image_path)))
     chart_is_animated = has_chart and os.path.isdir(str(chart_image_path))
-    # Validate audio file exists AND is non-empty (>1 KB).
-    # A zero-byte or partial file from a failed TTS run would pass os.path.exists
-    # but produce a silent video. Guard against that here.
+    # Validate audio file exists AND is a real decodable MP3 via FFprobe.
+    # File-size alone is insufficient — a stale valid MP3 from a prior cycle
+    # can pass a 1KB check but contain the wrong audio, causing FFmpeg to
+    # render silence against a mismatched script.
     _audio_size = os.path.getsize(str(audio_path)) if (audio_path and os.path.exists(str(audio_path))) else 0
     if audio_path and _audio_size < 1024:
-        log.warning(f"[FFmpeg] Audio file invalid or empty ({_audio_size} bytes) — treating as no audio: {audio_path}")
+        log.warning(f"[FFmpeg] Audio file too small ({_audio_size} bytes) — treating as no audio: {audio_path}")
         audio_path = None
+    elif audio_path and os.path.exists(str(audio_path)):
+        # Deep validation: confirm FFprobe can decode at least 1 audio stream
+        try:
+            _probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "a:0",
+                 "-show_entries", "stream=codec_type",
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(audio_path)],
+                capture_output=True, text=True, timeout=10,
+            )
+            if "audio" not in _probe.stdout:
+                log.warning(f"[FFmpeg] FFprobe found no audio stream in file — treating as no audio: {audio_path}")
+                audio_path = None
+        except Exception as _pe:
+            log.warning(f"[FFmpeg] FFprobe audio validation failed ({_pe}) — treating as no audio.")
+            audio_path = None
     has_audio       = bool(audio_path and os.path.exists(str(audio_path)))
     has_logo        = bool(logo_path and os.path.exists(str(logo_path)))
 
@@ -616,8 +632,12 @@ def create_video(
                 "-af", af_chain,
                 "-t", f"{slam_total:.2f}"]
     else:
-        silent_dur = 30 + (SLAM_DURATION if has_slam else 0)
-        cmd += ["-t", f"{silent_dur:.2f}"]   # silent fallback
+        # Hard abort — a silent video with no logo is worse than no video.
+        # This branch should never be reached: agent_generator.py aborts if
+        # TTS fails. If we somehow arrive here, do NOT render a 30s silent clip.
+        log.error("[FFmpeg] ABORT — no valid audio stream. Refusing to render a silent video.")
+        _cleanup(bg_local, caption_overlay_path, brand_overlay_path, slam_overlay_path)
+        return None
 
     cmd += [
         "-c:v", "libx264", "-crf", "23", "-preset", "fast",
