@@ -198,15 +198,18 @@ def _generate_kling_background(theme: str, fal_key: str) -> str | None:
         return None
 
 
-# ── Path 2: DALL-E 3 (static HD image, fast & cheap) ─────────────────────────
+# ── Path 2: GPT Image 1 (static HD image, fast & cheap) ──────────────────────
 def _generate_dalle_background(theme: str, api_key: str) -> str | None:
     """
-    Generate a static HD background using DALL-E 3.
-    Returns local path to the PNG file, or None on failure.
+    Generate a static HD background using OpenAI GPT Image 1.
+    (Formerly DALL-E 3, retired May 12 2026.)
+    Returns local path to the JPEG file, or None on failure.
     """
     if not OpenAI:
         log.error("openai library not installed.")
         return None
+
+    import base64
 
     prompt = (
         f"A breathtaking vertical cinematic photo of {theme}. "
@@ -215,33 +218,28 @@ def _generate_dalle_background(theme: str, api_key: str) -> str | None:
         "Absolutely no text, no letters."
     )
 
-    # DALL-E 3 safe neutral fallback prompt (used when themed prompt is content-filtered)
+    # Safe neutral fallback prompt (used when themed prompt is content-filtered)
     NEUTRAL_PROMPT = (
         "A breathtaking abstract cinematic background. Deep dark navy blues and electric cyan "
         "glowing light trails moving in slow motion. Extremely premium, modern, no text, no people."
     )
 
-    log.info(f"[DALL-E 3] Requesting static background: '{theme}'")
+    log.info(f"[GPT-Image] Requesting static background: '{theme}'")
     import time
     for attempt in range(1, 4):
         use_prompt = prompt if attempt < 3 else NEUTRAL_PROMPT  # last attempt always uses safe neutral
         try:
             client = OpenAI(api_key=api_key)
             response = client.images.generate(
-                model="dall-e-3",
+                model="gpt-image-1",
                 prompt=use_prompt,
-                size="1024x1792",
-                quality="hd",
+                size="1024x1536",
+                quality="high",
                 n=1,
             )
-            image_url = response.data[0].url
-
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, context=ctx) as r:
-                img_data = r.read()
+            # GPT Image models return base64 instead of URLs
+            img_b64 = response.data[0].b64_json
+            img_data = base64.b64decode(img_b64)
 
             img = Image.open(io.BytesIO(img_data)).convert("RGB")
             ts = __import__('datetime').datetime.now(
@@ -250,27 +248,26 @@ def _generate_dalle_background(theme: str, api_key: str) -> str | None:
             os.makedirs(OUTPUT_DIR, exist_ok=True)
             out_path = os.path.join(OUTPUT_DIR, f"dalle_bg_{ts}.jpg")
             img.save(out_path, "JPEG", quality=85)
-            log.info(f"[DALL-E 3] Background image saved → {out_path}")
+            log.info(f"[GPT-Image] Background image saved → {out_path}")
             return out_path
 
         except Exception as e:
             err_str = str(e)
             if "429" in err_str or "rate_limit" in err_str.lower():
-                log.warning(f"[DALL-E 3] HTTP 429 Rate Limit. (Attempt {attempt}/3)")
+                log.warning(f"[GPT-Image] HTTP 429 Rate Limit. (Attempt {attempt}/3)")
                 time.sleep(2 ** attempt)
             elif any(kw in err_str.lower() for kw in ("content_policy", "safety", "rejected", "content filter")):
-                # Content filter hit — retrying the same prompt will fail identically.
-                # Switch to neutral prompt on next attempt instead of wasting retries.
-                log.warning(f"[DALL-E 3] Content policy rejection on attempt {attempt}/3 — switching to neutral prompt.")
+                # Content filter hit — switch to neutral prompt on next attempt.
+                log.warning(f"[GPT-Image] Content policy rejection on attempt {attempt}/3 — switching to neutral prompt.")
                 prompt = NEUTRAL_PROMPT  # override for remaining attempts
             else:
-                log.error(f"[DALL-E 3] Generation Exception on attempt {attempt}/3: {e}")
+                log.error(f"[GPT-Image] Generation Exception on attempt {attempt}/3: {e}")
                 if attempt == 3:
-                    log.error("[DALL-E 3] Generation failed: All retry attempts exhausted.")
+                    log.error("[GPT-Image] Generation failed: All retry attempts exhausted.")
                     return None
                 time.sleep(2 ** attempt)
 
-    log.error("[DALL-E 3] Generation failed: All retry attempts exhausted.")
+    log.error("[GPT-Image] Generation failed: All retry attempts exhausted.")
     return None
 
 
@@ -285,7 +282,7 @@ def generate_background(market_hint: str = "") -> str:
 
     Priority order:
       1. Kling v2.6 Pro via fal.ai (kinetic MP4)
-      2. DALL-E 3 (static PNG fallback)
+      2. GPT Image 1 (static PNG fallback)
       3. Local grid (emergency fallback)
     """
     secrets_path = os.path.join(os.path.dirname(__file__), '..', '..', '..', 'secrets.json')
@@ -307,14 +304,14 @@ def generate_background(market_hint: str = "") -> str:
         result = _generate_kling_background(theme, fal_key)
         if result:
             return result
-        log.warning("[Kling] Failed — falling back to DALL-E 3.")
+        log.warning("[Kling] Failed — falling back to GPT-Image.")
 
-    # ── 2. DALL-E 3 static image ──────────────────────────────────────────────
+    # ── 2. GPT Image static image ─────────────────────────────────────────────
     if openai_key and OpenAI:
         result = _generate_dalle_background(theme, openai_key)
         if result:
             return result
-        log.warning("[DALL-E 3] Failed — using local grid fallback.")
+        log.warning("[GPT-Image] Failed — using local grid fallback.")
 
     # ── 3. Emergency local grid ───────────────────────────────────────────────
     return _generate_fallback_grid()
