@@ -552,6 +552,8 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
     if usd_value >= 100000:  # Only spawn expensive videos for $100k+ trades
         try:
             # 1. Enforce strict mathematical daily quota limits securely
+            #    NOTE: flat import — notifier.py is loaded as a module, not a package,
+            #    so relative imports (from .marketing_quota) always fail at runtime.
             from marketing_quota import throttle_video_generation
             if throttle_video_generation():
                 from execute_real_world import dispatch_video_alert
