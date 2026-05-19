@@ -151,7 +151,7 @@ async def lifespan(app: FastAPI):
             if forwarded:
                 log.info(f'[Kalshi] Scheduler: {forwarded} trade(s) forwarded.')
         except Exception as e:
-            log.error(f'[Kalshi] Scheduled poll error: {e}')
+            log.warning(f'[Kalshi] Scheduled poll error: {e}')
 
     # ── Morning Alpha Briefing Scheduler ─────────────────────────────────────
     scheduler = AsyncIOScheduler()
@@ -482,7 +482,15 @@ async def run_pipeline(event_dict: dict):
                      f"'{alert['market_title'][:40]}' | Total: ${alert['usd_value']:,.0f}")
 
         # 2. AI Summary (async-compatible via thread pool)
-        alert = await asyncio.get_event_loop().run_in_executor(None, summarize, alert)
+        #    CRITICAL: wrap in its own try/except — a transient OpenAI connection
+        #    drop (APIConnectionError / RemoteProtocolError) must NEVER kill the
+        #    rest of the pipeline (Redis cache, Discord, Telegram, video generation).
+        try:
+            alert = await asyncio.get_event_loop().run_in_executor(None, summarize, alert)
+        except Exception as _sum_err:
+            log.warning(f"AI summarizer failed (non-fatal — using fallback): {_sum_err}")
+            from ai_summarizer import fallback_summary
+            alert["ai_summary"] = fallback_summary(alert)
 
         log.info(f"[{alert['alert_tier']}] {alert['trader_handle']} "
                  f"${alert['usd_value']:,.0f} on '{alert['market_title'][:40]}'")
