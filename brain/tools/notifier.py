@@ -557,11 +557,24 @@ def deliver(payload: dict, dry_run: bool = False) -> dict:
             from marketing_quota import throttle_video_generation
             if throttle_video_generation():
                 from execute_real_world import dispatch_video_alert
-                
-                log.info(f"Triggering automated MP4 Generation pipeline for ${usd_value:,.0f} Whale Trade...")
-                # Fire the algorithm-optimized silent compilation native hook!
-                dispatch_video_alert(payload, include_music=False)
-                results["cinematic"] = "delivered"
+                import threading
+
+                log.info(f"[Cinematic] Spawning background thread for ${usd_value:,.0f} Whale Trade video...")
+
+                # ── CRITICAL: dispatch_video_alert is blocking (60-120s for Kling).
+                # Calling it synchronously here would time out the notifier and
+                # the entire cinematic block would be swallowed by the except clause.
+                # Fire it in a daemon thread so deliver() returns immediately.
+                def _run_video():
+                    try:
+                        dispatch_video_alert(payload, include_music=False)
+                        log.info(f"[Cinematic] ✅ Video pipeline completed for ${usd_value:,.0f} trade.")
+                    except Exception as _ve:
+                        log.error(f"[Cinematic] Background video thread failed: {_ve}")
+
+                t = threading.Thread(target=_run_video, daemon=True, name="cinematic-video")
+                t.start()
+                results["cinematic"] = "spawned_background_thread"
             else:
                 log.info(f"[Cinematic] Blocked MP4 Generation for ${usd_value:,.0f} trade. Daily 9:00 AM API quota (2 Max) strictly enforced.")
                 results["cinematic"] = "throttled_quota_met"
