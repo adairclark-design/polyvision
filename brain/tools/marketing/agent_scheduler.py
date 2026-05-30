@@ -153,6 +153,13 @@ def main():
 
     while True:
         try:
+            # ── PolyVision Cinematic Delivery Gate ────────────────────────────────
+            _VIDEO_PIPELINE_ENABLED = os.getenv('VIDEO_PIPELINE_ENABLED', 'false').lower() == 'true'
+            if not _VIDEO_PIPELINE_ENABLED:
+                log.info("[Scheduler] Agent daemon sleeping — VIDEO_PIPELINE_ENABLED is false.")
+                time.sleep(3600)
+                continue
+
             today = _today_str()
             videos_today = video_count_by_day.get(today, 0)
             now_utc      = datetime.now(timezone.utc)
