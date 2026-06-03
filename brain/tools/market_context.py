@@ -27,7 +27,7 @@ load_dotenv()
 
 TAVILY_API_KEY   = os.getenv("TAVILY_API_KEY", "")
 REDIS_URL        = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-CACHE_TTL        = int(os.getenv("CONTEXT_CACHE_TTL", "300"))   # 5 minutes
+CACHE_TTL        = int(os.getenv("CONTEXT_CACHE_TTL", "3600"))  # 1 hour
 TAVILY_ENDPOINT  = "https://api.tavily.com/search"
 MAX_CONTEXT_LEN  = 400   # chars injected into GPT prompt
 MAX_RESULTS      = 3
