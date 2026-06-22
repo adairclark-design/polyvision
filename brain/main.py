@@ -106,6 +106,22 @@ log = logging.getLogger(__name__)
 if STRIPE_API_KEY:
     stripe.api_key = STRIPE_API_KEY
 
+def _sentry_before_send(event, hint):
+    """Drop expected client-side HTTP errors (401, 403) from Sentry.
+
+    These are normal authentication failures triggered by unauthenticated
+    requests hitting protected endpoints. They are not application bugs and
+    were consuming ~13.8k errors/week of the Sentry error budget.
+    Instead, rely on access logs and metrics for auth failure visibility.
+    """
+    exc_info = hint.get('exc_info')
+    if exc_info:
+        exc_type, exc_value, _ = exc_info
+        # Suppress HTTPException 401 Unauthorized and 403 Forbidden
+        if exc_type is HTTPException and getattr(exc_value, 'status_code', None) in (401, 403):
+            return None  # Drop this event — do not send to Sentry
+    return event
+
 if SENTRY_DSN and SENTRY_AVAILABLE:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
@@ -113,8 +129,9 @@ if SENTRY_DSN and SENTRY_AVAILABLE:
         traces_sample_rate=0.1,
         environment=os.getenv('RAILWAY_ENVIRONMENT', 'development'),
         release='polyvision@1.0.0',
+        before_send=_sentry_before_send,
     )
-    log.info('Sentry initialized.')
+    log.info('Sentry initialized (401/403 HTTPExceptions excluded from error tracking).')
 elif SENTRY_DSN and not SENTRY_AVAILABLE:
     log.warning('SENTRY_DSN set but sentry-sdk not installed. Run: pip install "sentry-sdk[fastapi]"')
 
